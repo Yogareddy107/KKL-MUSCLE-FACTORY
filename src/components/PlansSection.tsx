@@ -25,7 +25,7 @@ export const PlansSection: React.FC<PlansSectionProps> = ({ whatsappNumber = '91
   const cleanWhatsapp = (whatsappNumber || '').replace(/[^0-9]/g, '');
 
   return (
-    <section id="plans" className="py-20 relative bg-brand-dark">
+    <section id="plans" className="py-16 sm:py-20 relative bg-brand-dark overflow-hidden">
       {/* Background radial accent */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-purple-950/15 blur-[140px] pointer-events-none rounded-full" />
 

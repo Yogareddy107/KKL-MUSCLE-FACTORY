@@ -7,13 +7,13 @@
   --foreground: #F7F5EE;
 }
 
+html,
 body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-body), system-ui, -apple-system, sans-serif;
   overflow-x: hidden;
-  selection-background-color: #E5AE32;
-  selection-color: #090A0F;
+  max-width: 100%;
 }
 
 ::selection {
