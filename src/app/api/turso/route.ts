@@ -118,10 +118,15 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'Unknown entity' }, { status: 400, headers: noCacheHeaders });
     }
 
-    return NextResponse.json({ success }, { headers: noCacheHeaders });
+    if (!success) {
+      console.warn(`[API /api/turso POST] Failed to persist entity: ${entity}`);
+      return NextResponse.json({ success: false, message: `Failed to persist ${entity} to cloud database` }, { status: 500, headers: noCacheHeaders });
+    }
+
+    return NextResponse.json({ success: true, message: `Successfully saved ${entity} to cloud database` }, { headers: noCacheHeaders });
   } catch (error: any) {
-    console.error('[API /api/turso POST] Error saving:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500, headers: noCacheHeaders });
+    console.error('[API /api/turso POST] Exception saving:', error);
+    return NextResponse.json({ success: false, error: error.message || 'Server error' }, { status: 500, headers: noCacheHeaders });
   }
 }
 

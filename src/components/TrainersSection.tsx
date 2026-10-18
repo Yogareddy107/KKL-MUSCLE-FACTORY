@@ -11,12 +11,37 @@ export const TrainersSection: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     async function load() {
-      const data = await getTrainers();
-      setTrainers(data.filter(t => t.is_active));
-      setLoading(false);
+      try {
+        const data = await getTrainers();
+        if (isMounted) {
+          setTrainers(data.filter(t => t.is_active));
+          setLoading(false);
+        }
+      } catch (err) {
+        console.warn('Error loading trainers:', err);
+      }
     }
+
     load();
+
+    const handleSync = () => {
+      if (document.visibilityState === 'visible') {
+        load();
+      }
+    };
+    window.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    const interval = setInterval(load, 10000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+      clearInterval(interval);
+    };
   }, []);
 
   return (

@@ -4,10 +4,11 @@ import {
   WorkoutPlan, DietPlan, GalleryItem, Enquiry, SpecialOffer 
 } from '@/types';
 
-const defaultTursoUrl = 'libsql://kkl-muscle-factory-yogareddy107.aws-ap-south-1.turso.io';
+const defaultTursoUrl = 'https://kkl-muscle-factory-yogareddy107.aws-ap-south-1.turso.io';
 const defaultTursoAuthToken = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTIzMjk4MTgsImlkIjoiMDFhMTRmMjAtMGIwMS03NjliLWFjMjItNzMwNzMyZWI0NDZhIiwia2lkIjoia2Qwa191STYtSGtpNVA0anhhQ3FqdlRHdi1jZE9GYVltcjlHOFAtWkk4RSIsInJpZCI6IjM4MTM0NDUzLTAwY2QtNDE1Ny1hYjk4LTU1YmY3MTI4MDVlMiJ9.i-pN6FL8Dx2LOsm6ZnaaxDjRnl7gVSlbjHx2iIRAXikXbRS5Q56f-3C-Gjiwf0HoHgNxtI2ba_XKb1N9QjFgAA';
 
-const tursoUrl = process.env.TURSO_DATABASE_URL || defaultTursoUrl;
+const rawTursoUrl = process.env.TURSO_DATABASE_URL || defaultTursoUrl;
+const tursoUrl = rawTursoUrl.replace(/^libsql:\/\//, 'https://');
 const tursoAuthToken = process.env.TURSO_AUTH_TOKEN || defaultTursoAuthToken;
 
 export const isTursoConfigured = (): boolean => {
@@ -60,20 +61,24 @@ export async function saveTursoGymSettings(settings: Partial<GymSettings>): Prom
   if (!tursoClient) return false;
   try {
     await tursoClient.execute({
-      sql: `UPDATE gym_settings SET 
-        gym_name = COALESCE(?, gym_name),
-        tagline = COALESCE(?, tagline),
-        headline = COALESCE(?, headline),
-        phone = COALESCE(?, phone),
-        whatsapp_number = COALESCE(?, whatsapp_number),
-        email = COALESCE(?, email),
-        address = COALESCE(?, address),
-        map_url = COALESCE(?, map_url),
-        instagram_url = COALESCE(?, instagram_url),
-        opening_hours = COALESCE(?, opening_hours),
-        logo_url = COALESCE(?, logo_url),
-        updated_at = ?
-      WHERE id = 'default'`,
+      sql: `INSERT INTO gym_settings (
+        id, gym_name, tagline, headline, phone, whatsapp_number, email, address, map_url, instagram_url, opening_hours, logo_url, member_portal_enabled, updated_at
+      ) VALUES (
+        'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ) ON CONFLICT(id) DO UPDATE SET
+        gym_name = COALESCE(excluded.gym_name, gym_settings.gym_name),
+        tagline = COALESCE(excluded.tagline, gym_settings.tagline),
+        headline = COALESCE(excluded.headline, gym_settings.headline),
+        phone = COALESCE(excluded.phone, gym_settings.phone),
+        whatsapp_number = COALESCE(excluded.whatsapp_number, gym_settings.whatsapp_number),
+        email = COALESCE(excluded.email, gym_settings.email),
+        address = COALESCE(excluded.address, gym_settings.address),
+        map_url = COALESCE(excluded.map_url, gym_settings.map_url),
+        instagram_url = COALESCE(excluded.instagram_url, gym_settings.instagram_url),
+        opening_hours = COALESCE(excluded.opening_hours, gym_settings.opening_hours),
+        logo_url = COALESCE(excluded.logo_url, gym_settings.logo_url),
+        member_portal_enabled = COALESCE(excluded.member_portal_enabled, gym_settings.member_portal_enabled),
+        updated_at = excluded.updated_at`,
       args: [
         settings.gym_name || null,
         settings.tagline || null,
@@ -86,6 +91,7 @@ export async function saveTursoGymSettings(settings: Partial<GymSettings>): Prom
         settings.instagram_url || null,
         settings.opening_hours || null,
         settings.logo_url || null,
+        settings.member_portal_enabled !== undefined ? (settings.member_portal_enabled ? 1 : 0) : 1,
         new Date().toISOString()
       ]
     });
@@ -179,13 +185,22 @@ export async function getTursoTrainers(): Promise<Trainer[] | null> {
 export async function saveTursoTrainer(trainer: Trainer): Promise<boolean> {
   if (!tursoClient) return false;
   try {
+    const certs = Array.isArray(trainer.certifications)
+      ? JSON.stringify(trainer.certifications)
+      : (typeof trainer.certifications === 'string' ? trainer.certifications : JSON.stringify(['Certified Coach']));
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO trainers (id, name, specialization, experience, bio, photo_url, certifications, is_active, display_order)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
-        trainer.id, trainer.name, trainer.specialization, trainer.experience,
-        trainer.bio || '', trainer.photo_url || '', JSON.stringify(trainer.certifications || []),
-        trainer.is_active ? 1 : 0, trainer.display_order || 1
+        trainer.id,
+        trainer.name || 'Coach',
+        trainer.specialization || 'Personal Trainer',
+        trainer.experience || '5+ Years',
+        trainer.bio || '',
+        trainer.photo_url || '',
+        certs,
+        trainer.is_active ? 1 : 0,
+        trainer.display_order || 1
       ]
     });
     return true;

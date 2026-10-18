@@ -13,10 +13,12 @@ export const OfferModal: React.FC = () => {
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
+    let isMounted = true;
 
     const loadOffer = async () => {
       try {
         const data = await getSpecialOffer();
+        if (!isMounted) return;
         setOffer(data);
 
         // If offer is active, show popup after 1.2s delay if not dismissed in this session
@@ -24,21 +26,35 @@ export const OfferModal: React.FC = () => {
           const dismissed = sessionStorage.getItem('kkl_offer_seen');
           if (!dismissed) {
             timer = setTimeout(() => {
-              setIsOpen(true);
+              if (isMounted) setIsOpen(true);
             }, 1200);
           }
         }
       } catch (err) {
         console.warn('Error fetching special offer:', err);
       } finally {
-        setHasLoaded(true);
+        if (isMounted) setHasLoaded(true);
       }
     };
 
     loadOffer();
 
+    const handleSync = () => {
+      if (document.visibilityState === 'visible') {
+        loadOffer();
+      }
+    };
+    window.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    const interval = setInterval(loadOffer, 15000);
+
     return () => {
+      isMounted = false;
       if (timer) clearTimeout(timer);
+      window.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+      clearInterval(interval);
     };
   }, []);
 

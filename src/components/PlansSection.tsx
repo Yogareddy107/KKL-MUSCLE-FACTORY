@@ -14,12 +14,37 @@ export const PlansSection: React.FC<PlansSectionProps> = ({ whatsappNumber = '91
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     async function load() {
-      const data = await getMembershipPlans();
-      setPlans(data.filter(p => p.is_published));
-      setLoading(false);
+      try {
+        const data = await getMembershipPlans();
+        if (isMounted) {
+          setPlans(data.filter(p => p.is_published));
+          setLoading(false);
+        }
+      } catch (err) {
+        console.warn('Error loading plans:', err);
+      }
     }
+
     load();
+
+    const handleSync = () => {
+      if (document.visibilityState === 'visible') {
+        load();
+      }
+    };
+    window.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    const interval = setInterval(load, 10000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+      clearInterval(interval);
+    };
   }, []);
 
   const cleanWhatsapp = (whatsappNumber || '').replace(/[^0-9]/g, '');

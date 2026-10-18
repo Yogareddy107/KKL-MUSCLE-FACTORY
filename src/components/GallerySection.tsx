@@ -12,11 +12,36 @@ export const GallerySection: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<GalleryItem | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     async function load() {
-      const data = await getGalleryItems();
-      setItems(data.filter(g => g.is_published));
+      try {
+        const data = await getGalleryItems();
+        if (isMounted) {
+          setItems(data.filter(g => g.is_published));
+        }
+      } catch (err) {
+        console.warn('Error loading gallery items:', err);
+      }
     }
+
     load();
+
+    const handleSync = () => {
+      if (document.visibilityState === 'visible') {
+        load();
+      }
+    };
+    window.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    const interval = setInterval(load, 12000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+      clearInterval(interval);
+    };
   }, []);
 
   const categories = ['All', 'Equipment', 'Gym Floor', 'Training'];
