@@ -1,4 +1,4 @@
-import { GymSettings, Member, MembershipPlan, Membership, Trainer, AttendanceRecord, WorkoutPlan, DietPlan, Enquiry, GalleryItem } from '@/types';
+import { GymSettings, Member, MembershipPlan, Membership, Trainer, AttendanceRecord, WorkoutPlan, DietPlan, Enquiry, GalleryItem, SpecialOffer } from '@/types';
 
 export const initialGymSettings: GymSettings = {
   id: 'default',
@@ -431,3 +431,16 @@ export const initialGallery: GalleryItem[] = [
     is_published: true,
   },
 ];
+
+export const initialSpecialOffer: SpecialOffer = {
+  id: 'active-offer',
+  title: 'Grand Fitness Transformation Offer!',
+  badge: 'SPECIAL PROMOTION • FLAT 20% OFF',
+  description: 'Join any 6-Month or Annual Gym Membership and get 1 Month FREE + 1-on-1 Personalized Diet Protocol included! Limited registration slots available this month.',
+  image_url: '/images/hero-gym.jpg',
+  cta_text: 'Claim Offer on WhatsApp',
+  cta_link: 'https://wa.me/919963625470?text=Hi%20KKL%20Muscle%20Factory!%20I%20want%20to%20claim%20the%20Special%20Transformation%20Offer.',
+  is_active: true,
+  updated_at: new Date().toISOString(),
+};
+

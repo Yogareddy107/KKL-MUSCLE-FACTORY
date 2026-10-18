@@ -9,7 +9,8 @@ import {
   MessageSquare, Image as ImageIcon, Settings, LogOut, 
   Search, Plus, Check, X, AlertCircle, Edit, Trash2, 
   ChevronRight, ExternalLink, Shield, RefreshCw, Eye, 
-  Phone, UserCheck, Flame, ArrowUpRight, Upload, Video 
+  Phone, UserCheck, Flame, ArrowUpRight, Upload, Video,
+  Sparkles, Percent, MessageCircle
 } from 'lucide-react';
 import { 
   getGymSettings, updateGymSettings, getMembers, saveMember, 
@@ -19,11 +20,12 @@ import {
   deleteWorkoutPlan, assignWorkoutPlanToMember, getDietPlans, saveDietPlan, 
   deleteDietPlan, assignDietPlanToMember, getEnquiries, updateEnquiryStatus, 
   getGalleryItems, saveGalleryItem, deleteGalleryItem, getDashboardMetrics, 
+  getSpecialOffer, saveSpecialOffer,
   DashboardMetrics 
 } from '@/lib/store';
 import { 
   GymSettings, Member, MembershipPlan, Trainer, 
-  AttendanceRecord, WorkoutPlan, DietPlan, Enquiry, GalleryItem, Exercise, DietMeal 
+  AttendanceRecord, WorkoutPlan, DietPlan, Enquiry, GalleryItem, Exercise, DietMeal, SpecialOffer 
 } from '@/types';
 import { isAdminAuthenticated, adminLogout } from '@/lib/auth';
 
@@ -37,7 +39,9 @@ type AdminTab =
   | 'diets' 
   | 'enquiries' 
   | 'gallery' 
+  | 'offer'
   | 'settings';
+
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -55,6 +59,8 @@ export default function AdminDashboardPage() {
   const [diets, setDiets] = useState<DietPlan[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [offer, setOffer] = useState<SpecialOffer | null>(null);
+  const [offerImagePreview, setOfferImagePreview] = useState<string>('');
 
   // Search & Filter States
   const [memberSearch, setMemberSearch] = useState('');
@@ -122,6 +128,7 @@ export default function AdminDashboardPage() {
         dietList,
         enquiryList,
         galleryList,
+        activeOffer,
       ] = await Promise.all([
         getDashboardMetrics(),
         getGymSettings(),
@@ -133,6 +140,7 @@ export default function AdminDashboardPage() {
         getDietPlans(),
         getEnquiries(),
         getGalleryItems(),
+        getSpecialOffer(),
       ]);
 
       setMetrics(dashMetrics);
@@ -145,6 +153,10 @@ export default function AdminDashboardPage() {
       setDiets(dietList);
       setEnquiries(enquiryList);
       setGallery(galleryList);
+      setOffer(activeOffer);
+      if (activeOffer?.image_url) {
+        setOfferImagePreview(activeOffer.image_url);
+      }
     } catch (e) {
       console.error('Failed to load dashboard data', e);
     } finally {
@@ -162,16 +174,53 @@ export default function AdminDashboardPage() {
     router.push('/admin/login');
   };
 
-  // Helper for reading uploaded file to data URL
+  // Helper for reading uploaded file to data URL with automatic client-side canvas HD compression
   const handleFileUploadToDataURL = (file: File, callback: (url: string) => void) => {
+    if (!file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') callback(reader.result);
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        callback(reader.result);
-      }
+    reader.onload = (e) => {
+      const img = new (window as any).Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1200;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          callback(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        callback(compressed);
+      };
+      img.onerror = () => {
+        callback(e.target?.result as string);
+      };
+      img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
+
 
   // Quick Attendance Check-in
   const handleRecordAttendance = async () => {
@@ -493,6 +542,36 @@ export default function AdminDashboardPage() {
     notify('Gym settings saved successfully.');
   };
 
+  // Save / Update Special Offer Popup
+  const handleSaveOfferSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+
+    const title = formData.get('title') as string;
+    const badge = formData.get('badge') as string;
+    const description = formData.get('description') as string;
+    const image_url = offerImagePreview || (formData.get('image_url') as string) || '/images/hero-gym.jpg';
+    const cta_text = formData.get('cta_text') as string;
+    const cta_link = formData.get('cta_link') as string;
+    const is_active = formData.get('is_active') === 'on';
+
+    const offerToSave: SpecialOffer = {
+      id: 'active-offer',
+      title: title.trim(),
+      badge: badge.trim(),
+      description: description.trim(),
+      image_url,
+      cta_text: cta_text.trim(),
+      cta_link: cta_link.trim(),
+      is_active,
+    };
+
+    const updated = await saveSpecialOffer(offerToSave);
+    setOffer(updated);
+    notify('Special Offer popup updated successfully! Now live across all devices.');
+  };
+
   const filteredMembers = members.filter(m => 
     m.full_name.toLowerCase().includes(memberSearch.toLowerCase()) ||
     m.member_code.toLowerCase().includes(memberSearch.toLowerCase()) ||
@@ -549,6 +628,7 @@ export default function AdminDashboardPage() {
               { id: 'diets', label: 'Diet Management', icon: Apple },
               { id: 'enquiries', label: 'Enquiries', icon: MessageSquare, badge: metrics?.newEnquiries },
               { id: 'gallery', label: 'Gallery & Media', icon: ImageIcon },
+              { id: 'offer', label: 'Offer Popup', icon: Flame, badge: offer?.is_active ? 'LIVE' : undefined },
               { id: 'settings', label: 'Gym Settings', icon: Settings },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -567,7 +647,7 @@ export default function AdminDashboardPage() {
                     <Icon className="w-4 h-4 shrink-0" />
                     <span>{tab.label}</span>
                   </div>
-                  {tab.badge !== undefined && tab.badge > 0 && (
+                  {tab.badge !== undefined && (
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
                       isActive ? 'bg-brand-dark text-brand-gold' : 'bg-brand-gold/20 text-brand-gold'
                     }`}>
@@ -616,12 +696,14 @@ export default function AdminDashboardPage() {
               {activeTab === 'diets' && 'Diet Plans & Member Assignments'}
               {activeTab === 'enquiries' && 'Public Enquiries & Lead Pipeline'}
               {activeTab === 'gallery' && 'Photo Gallery & Media Manager'}
+              {activeTab === 'offer' && 'Website Offer Popup & Promo Manager'}
               {activeTab === 'settings' && 'Gym Profile & Operational Settings'}
             </h1>
             <p className="text-xs text-brand-muted mt-1">
               KKL Muscle Factory &bull; Full CRUD Administrator Suite
             </p>
           </div>
+
 
           <div className="flex items-center gap-3">
             <a
@@ -1702,6 +1784,263 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------------- */}
+        {/* TAB 10: OFFERS & PROMO POPUP */}
+        {/* ------------------------------------------------------------------- */}
+        {activeTab === 'offer' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Status overview banner */}
+            <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+              offer?.is_active 
+                ? 'bg-gradient-to-r from-emerald-950/60 via-brand-surface to-brand-surface border-emerald-700/60' 
+                : 'bg-gradient-to-r from-zinc-900/60 via-brand-surface to-brand-surface border-brand-border'
+            }`}>
+              <div className="flex items-center gap-3.5">
+                <div className={`p-3 rounded-xl shrink-0 ${
+                  offer?.is_active ? 'bg-emerald-500 text-brand-dark' : 'bg-brand-elevated text-brand-muted'
+                }`}>
+                  <Flame className="w-6 h-6 fill-current" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-heading text-lg font-bold uppercase text-brand-cream">
+                      Website Visitor Offer Popup
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                      offer?.is_active 
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
+                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                    }`}>
+                      {offer?.is_active ? 'POPUP ACTIVE & SHOWING' : 'POPUP PAUSED'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-brand-muted mt-0.5">
+                    When active, a high-converting promotional modal appears automatically when users open the website.
+                  </p>
+                </div>
+              </div>
+
+              {offer && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const nextStatus = !offer.is_active;
+                    const updated = await saveSpecialOffer({ ...offer, is_active: nextStatus });
+                    setOffer(updated);
+                    notify(nextStatus ? 'Offer popup activated for all users!' : 'Offer popup deactivated.');
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 border shrink-0 ${
+                    offer.is_active
+                      ? 'bg-red-950/60 hover:bg-red-900/60 border-red-800/80 text-red-200'
+                      : 'bg-emerald-950/60 hover:bg-emerald-900/60 border-emerald-800/80 text-emerald-200'
+                  }`}
+                >
+                  {offer.is_active ? 'Pause Popup' : 'Activate Popup'}
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Offer Editor Form */}
+              <div className="lg:col-span-7 bg-brand-surface border border-brand-border rounded-2xl p-6">
+                <h3 className="font-heading text-lg font-bold uppercase text-brand-cream mb-4 flex items-center gap-2">
+                  <Edit className="w-4 h-4 text-brand-gold" />
+                  <span>Configure Promotional Popup</span>
+                </h3>
+
+                <form onSubmit={handleSaveOfferSubmit} className="space-y-4 text-xs">
+                  {/* Active Toggle Switch */}
+                  <div className="p-3.5 rounded-xl bg-brand-elevated border border-brand-border flex items-center justify-between">
+                    <div>
+                      <span className="font-bold uppercase text-brand-cream block">Show Popup To Visitors</span>
+                      <span className="text-[11px] text-brand-muted">Turn on to display to visitors when they land on the website</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        name="is_active"
+                        defaultChecked={offer?.is_active ?? true}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-brand-dark peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-gold"></div>
+                    </label>
+                  </div>
+
+                  {/* Ribbon Badge */}
+                  <div>
+                    <label className="block font-bold uppercase text-brand-muted mb-1">
+                      Discount Ribbon / Top Badge *
+                    </label>
+                    <input
+                      type="text"
+                      name="badge"
+                      required
+                      placeholder="e.g. SPECIAL PROMOTION • FLAT 20% OFF"
+                      defaultValue={offer?.badge || 'SPECIAL PROMOTION • FLAT 20% OFF'}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-brand-elevated border border-brand-border text-brand-cream outline-none focus:border-brand-gold font-medium"
+                    />
+                  </div>
+
+                  {/* Headline */}
+                  <div>
+                    <label className="block font-bold uppercase text-brand-muted mb-1">
+                      Offer Headline / Title *
+                    </label>
+                    <input
+                      type="text"
+                      name="title"
+                      required
+                      placeholder="e.g. Grand Fitness Transformation Offer!"
+                      defaultValue={offer?.title || 'Grand Fitness Transformation Offer!'}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-brand-elevated border border-brand-border text-brand-cream outline-none focus:border-brand-gold font-bold text-sm"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block font-bold uppercase text-brand-muted mb-1">
+                      Offer Details &amp; Perks *
+                    </label>
+                    <textarea
+                      name="description"
+                      rows={3}
+                      required
+                      placeholder="Describe the discount, free personal diet protocol, free months, or limited slots..."
+                      defaultValue={offer?.description || 'Join any 6-Month or Annual Gym Membership and get 1 Month FREE + 1-on-1 Personalized Diet Protocol included! Limited registration slots available this month.'}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-brand-elevated border border-brand-border text-brand-cream outline-none focus:border-brand-gold resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Poster Image Upload & Preview */}
+                  <div>
+                    <label className="block font-bold uppercase text-brand-muted mb-1">
+                      Promotional Poster Image (Auto-Compressed for HD Quality)
+                    </label>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleFileUploadToDataURL(e.target.files[0], (url) => setOfferImagePreview(url));
+                          }
+                        }}
+                        className="text-xs text-brand-muted file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border file:border-brand-border file:bg-brand-elevated file:text-brand-cream file:text-xs file:font-semibold"
+                      />
+                      <input
+                        type="text"
+                        name="image_url"
+                        placeholder="Or paste image URL (e.g. /images/hero-gym.jpg)"
+                        value={offerImagePreview}
+                        onChange={(e) => setOfferImagePreview(e.target.value)}
+                        className="flex-1 px-3.5 py-2 rounded-xl bg-brand-elevated border border-brand-border text-brand-cream outline-none focus:border-brand-gold text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* CTA Buttons */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold uppercase text-brand-muted mb-1">
+                        Action Button Text *
+                      </label>
+                      <input
+                        type="text"
+                        name="cta_text"
+                        required
+                        placeholder="e.g. Claim Offer on WhatsApp"
+                        defaultValue={offer?.cta_text || 'Claim Offer on WhatsApp'}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-brand-elevated border border-brand-border text-brand-cream outline-none focus:border-brand-gold font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold uppercase text-brand-muted mb-1">
+                        Action Link / WhatsApp URL *
+                      </label>
+                      <input
+                        type="text"
+                        name="cta_link"
+                        required
+                        placeholder="e.g. https://wa.me/919490862006?text=..."
+                        defaultValue={offer?.cta_link || 'https://wa.me/919490862006?text=Hi%20KKL%20Muscle%20Factory!%20I%20want%20to%20claim%20the%20Special%20Transformation%20Offer.'}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-brand-elevated border border-brand-border text-brand-cream outline-none focus:border-brand-gold font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-brand-border/70 flex items-center justify-between">
+                    <span className="text-[11px] text-brand-muted flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-brand-gold" />
+                      <span>Syncs directly to Turso Edge Database across all devices</span>
+                    </span>
+
+                    <button
+                      type="submit"
+                      id="btn-save-offer"
+                      className="px-6 py-2.5 rounded-xl bg-gold-gradient text-brand-dark font-black text-xs uppercase tracking-wider shadow-gold-sm hover:scale-[1.02] active:scale-[0.98] transition-all"
+                    >
+                      Save &amp; Publish Offer
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Real-Time Live Preview */}
+              <div className="lg:col-span-5 bg-brand-surface border border-brand-border rounded-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-brand-border pb-3">
+                  <h4 className="font-heading text-sm font-bold uppercase text-brand-cream flex items-center gap-1.5">
+                    <Eye className="w-4 h-4 text-brand-gold" />
+                    <span>Visitor Popup Live Preview</span>
+                  </h4>
+                  <span className="text-[10px] uppercase font-bold text-brand-gold">Interactive Preview</span>
+                </div>
+
+                {/* Exact replica of the popup */}
+                <div className="relative rounded-2xl border-2 border-brand-gold/60 bg-brand-dark/95 overflow-hidden shadow-2xl">
+                  {offerImagePreview && (
+                    <div className="relative w-full h-36 bg-brand-elevated overflow-hidden">
+                      <Image
+                        src={offerImagePreview}
+                        alt="Offer Preview"
+                        fill
+                        className="object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-brand-dark via-transparent to-transparent" />
+                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/80 border border-brand-gold text-[9px] font-black uppercase text-brand-gold">
+                        <Percent className="w-3 h-3" />
+                        <span>{offer?.badge || 'FLAT 20% OFF'}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-4 space-y-2.5">
+                    <h5 className="font-heading text-base font-black uppercase text-brand-cream leading-tight">
+                      {offer?.title || 'Grand Fitness Transformation Offer!'}
+                    </h5>
+                    <p className="text-[11px] text-brand-cream-dim leading-relaxed line-clamp-3">
+                      {offer?.description || 'Join any 6-Month or Annual Gym Membership and get 1 Month FREE + 1-on-1 Personalized Diet Protocol included!'}
+                    </p>
+
+                    <div className="pt-1 flex flex-col gap-2">
+                      <div className="w-full py-2 px-3 rounded-lg bg-gold-gradient text-brand-dark font-black text-[11px] uppercase tracking-wider text-center flex items-center justify-center gap-1.5 shadow-gold-sm">
+                        <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                        <span>{offer?.cta_text || 'Claim Offer on WhatsApp'}</span>
+                      </div>
+                      <div className="w-full py-1.5 px-3 rounded-lg border border-brand-border bg-brand-elevated text-brand-cream text-[10px] font-bold uppercase tracking-wider text-center">
+                        Explore Plans
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-brand-muted text-center italic">
+                  This popup will appear with a smooth animation when visitors open KKL Muscle Factory on mobile or desktop.
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </main>

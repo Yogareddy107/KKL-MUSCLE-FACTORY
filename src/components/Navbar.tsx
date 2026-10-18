@@ -31,31 +31,37 @@ export const Navbar: React.FC = () => {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      className={`fixed z-50 transition-all duration-300 ${
         scrolled
-          ? 'py-2 lg:py-2.5 bg-brand-dark/95 backdrop-blur-xl border-b border-brand-gold/30 shadow-[0_10px_35px_rgba(0,0,0,0.85),0_0_20px_rgba(229,174,50,0.15)]'
-          : 'py-2.5 sm:py-3.5 bg-brand-dark/90 backdrop-blur-md border-b border-brand-border/70'
+          ? 'top-2 sm:top-3.5 left-0 right-0 px-2 sm:px-4 md:px-6 pointer-events-none'
+          : 'top-0 left-0 right-0 px-0'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between gap-2 sm:gap-4">
+      <div
+        className={`transition-all duration-300 ${
+          scrolled
+            ? 'pointer-events-auto max-w-7xl mx-auto rounded-2xl bg-brand-dark/92 backdrop-blur-2xl border border-brand-gold/40 shadow-[0_15px_45px_rgba(0,0,0,0.9),0_0_25px_rgba(229,174,50,0.2)] py-2 sm:py-2.5 px-3 sm:px-6'
+            : 'max-w-7xl mx-auto bg-brand-dark/95 backdrop-blur-md border-b border-brand-border/70 py-3 sm:py-4 px-3.5 sm:px-6 lg:px-8'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2.5 sm:gap-4">
           {/* Brand Logo & Name */}
-          <Link href="/" className="flex items-center gap-2 sm:gap-3 group shrink-0">
-            <div className="relative w-9 h-9 sm:w-11 sm:h-11 md:w-13 md:h-13 shrink-0 filter drop-shadow-[0_2px_10px_rgba(229,174,50,0.35)] transition-transform duration-300 group-hover:scale-105">
+          <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group shrink-0">
+            <div className="relative w-11 h-11 sm:w-12 sm:h-12 md:w-14 md:h-14 shrink-0 filter drop-shadow-[0_2px_12px_rgba(229,174,50,0.4)] transition-transform duration-300 group-hover:scale-105">
               <Image
                 src="/logo.png"
                 alt="KKL Muscle Factory Logo"
                 fill
                 priority
                 className="object-contain"
-                sizes="(max-width: 640px) 36px, (max-width: 768px) 44px, 52px"
+                sizes="(max-width: 640px) 44px, (max-width: 768px) 48px, 56px"
               />
             </div>
             <div className="flex flex-col justify-center">
-              <span className="font-heading text-sm sm:text-base md:text-lg lg:text-xl font-black tracking-wider text-brand-cream group-hover:text-brand-gold transition-colors duration-200 leading-tight whitespace-nowrap">
+              <span className="font-heading text-[15px] sm:text-lg md:text-xl font-black tracking-wider text-brand-cream group-hover:text-brand-gold transition-colors duration-200 leading-tight whitespace-nowrap">
                 KKL MUSCLE FACTORY
               </span>
-              <span className="text-[8px] sm:text-[9px] md:text-[10px] text-brand-gold font-bold uppercase tracking-widest leading-tight mt-0.5">
+              <span className="text-[9px] sm:text-[10px] text-brand-gold font-bold uppercase tracking-widest leading-tight mt-0.5">
                 Gym &amp; Fitness Center
               </span>
             </div>
@@ -100,7 +106,7 @@ export const Navbar: React.FC = () => {
           <div className="hidden sm:flex lg:hidden items-center gap-2">
             <Link
               href={member ? '/member/dashboard' : '/member/login'}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-brand-border bg-brand-surface text-xs font-bold text-brand-cream hover:border-brand-gold/40"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-brand-border bg-brand-surface text-xs font-bold text-brand-cream hover:border-brand-gold/40"
             >
               <User className="w-3.5 h-3.5 text-brand-gold" />
               <span>{member ? 'Dashboard' : 'Portal'}</span>
@@ -108,7 +114,7 @@ export const Navbar: React.FC = () => {
 
             <a
               href="#plans"
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gold-gradient text-brand-dark font-bold text-xs uppercase tracking-wider shadow-gold-sm"
+              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-gold-gradient text-brand-dark font-black text-xs uppercase tracking-wider shadow-gold-sm"
             >
               <span>Join</span>
             </a>
@@ -118,7 +124,7 @@ export const Navbar: React.FC = () => {
           <div className="flex sm:hidden items-center gap-2">
             <a
               href="#plans"
-              className="px-2.5 py-1 rounded-md bg-gold-gradient text-brand-dark font-black text-[10px] uppercase tracking-wider shadow-gold-sm"
+              className="px-3.5 py-1.5 rounded-lg bg-gold-gradient text-brand-dark font-black text-xs uppercase tracking-wider shadow-gold-sm hover:scale-105 active:scale-95 transition-transform"
             >
               Join
             </a>
@@ -127,9 +133,9 @@ export const Navbar: React.FC = () => {
               onClick={() => setIsOpen(!isOpen)}
               id="mobile-menu-toggle"
               aria-label="Toggle navigation menu"
-              className="p-1.5 rounded-lg border border-brand-border bg-brand-surface text-brand-cream hover:text-brand-gold transition-colors"
+              className="p-2 rounded-xl border border-brand-border bg-brand-surface text-brand-cream hover:text-brand-gold transition-colors"
             >
-              {isOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+              {isOpen ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
             </button>
           </div>
 
@@ -138,17 +144,17 @@ export const Navbar: React.FC = () => {
             <button
               onClick={() => setIsOpen(!isOpen)}
               aria-label="Toggle navigation menu"
-              className="p-2 rounded-lg border border-brand-border bg-brand-surface text-brand-cream hover:text-brand-gold transition-colors"
+              className="p-2 rounded-xl border border-brand-border bg-brand-surface text-brand-cream hover:text-brand-gold transition-colors"
             >
-              {isOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+              {isOpen ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
             </button>
           </div>
         </div>
 
         {/* Compact Mobile & Tablet Dropdown Sheet */}
         {isOpen && (
-          <div className="lg:hidden mt-2 p-3 rounded-2xl border border-brand-border/80 bg-brand-surface/98 backdrop-blur-2xl shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
-            {/* Compact 2-Column Links Grid (Takes only ~100px height!) */}
+          <div className="lg:hidden mt-2.5 p-3 rounded-2xl border border-brand-border/80 bg-brand-surface/98 backdrop-blur-2xl shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+            {/* Compact 2-Column Links Grid */}
             <div className="grid grid-cols-2 gap-1.5 p-1.5 rounded-xl bg-brand-dark/60 border border-brand-border/50">
               {navLinks.map((link) => {
                 const Icon = link.icon;
@@ -171,7 +177,7 @@ export const Navbar: React.FC = () => {
               <Link
                 href={member ? '/member/dashboard' : '/member/login'}
                 onClick={() => setIsOpen(false)}
-                className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg border border-brand-border bg-brand-elevated text-[11px] font-bold text-brand-cream hover:border-brand-gold/40 truncate"
+                className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg border border-brand-border bg-brand-elevated text-xs font-bold text-brand-cream hover:border-brand-gold/40 truncate"
               >
                 <User className="w-3.5 h-3.5 text-brand-gold shrink-0" />
                 <span className="truncate">{member ? 'Dashboard' : 'Portal'}</span>
@@ -180,7 +186,7 @@ export const Navbar: React.FC = () => {
               <a
                 href="#plans"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center justify-center gap-1 py-2 px-2 rounded-lg bg-gold-gradient text-brand-dark font-black text-[11px] uppercase tracking-wider shadow-gold-sm truncate"
+                className="flex items-center justify-center gap-1 py-2 px-2 rounded-lg bg-gold-gradient text-brand-dark font-black text-xs uppercase tracking-wider shadow-gold-sm truncate"
               >
                 <span>Explore Plans</span>
                 <ChevronRight className="w-3.5 h-3.5 shrink-0" />
@@ -192,3 +198,4 @@ export const Navbar: React.FC = () => {
     </header>
   );
 };
+

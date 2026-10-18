@@ -7,12 +7,23 @@ import {
   getTursoWorkouts, saveTursoWorkout, deleteTursoWorkout,
   getTursoDiets, saveTursoDiet, deleteTursoDiet,
   getTursoGallery, saveTursoGallery, deleteTursoGallery,
-  getTursoEnquiries, saveTursoEnquiry, isTursoConfigured
+  getTursoEnquiries, saveTursoEnquiry, 
+  getTursoSpecialOffer, saveTursoSpecialOffer,
+  isTursoConfigured
 } from '@/lib/turso';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const noCacheHeaders = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
 
 export async function GET(req: NextRequest) {
   if (!isTursoConfigured()) {
-    return NextResponse.json({ success: false, message: 'Turso not configured' }, { status: 503 });
+    return NextResponse.json({ success: false, message: 'Turso not configured' }, { status: 503, headers: noCacheHeaders });
   }
 
   const { searchParams } = new URL(req.url);
@@ -22,48 +33,52 @@ export async function GET(req: NextRequest) {
     switch (entity) {
       case 'settings': {
         const data = await getTursoGymSettings();
-        return NextResponse.json({ success: true, data });
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
       case 'plans': {
         const data = await getTursoPlans();
-        return NextResponse.json({ success: true, data });
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
       case 'trainers': {
         const data = await getTursoTrainers();
-        return NextResponse.json({ success: true, data });
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
       case 'members': {
         const data = await getTursoMembers();
-        return NextResponse.json({ success: true, data });
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
       case 'workouts': {
         const data = await getTursoWorkouts();
-        return NextResponse.json({ success: true, data });
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
       case 'diets': {
         const data = await getTursoDiets();
-        return NextResponse.json({ success: true, data });
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
       case 'gallery': {
         const data = await getTursoGallery();
-        return NextResponse.json({ success: true, data });
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
       case 'enquiries': {
         const data = await getTursoEnquiries();
-        return NextResponse.json({ success: true, data });
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
+      }
+      case 'offer': {
+        const data = await getTursoSpecialOffer();
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
       default:
-        return NextResponse.json({ success: false, message: 'Invalid entity specified' }, { status: 400 });
+        return NextResponse.json({ success: false, message: 'Invalid entity specified' }, { status: 400, headers: noCacheHeaders });
     }
   } catch (error: any) {
     console.error(`[API /api/turso GET] Error fetching ${entity}:`, error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 500, headers: noCacheHeaders });
   }
 }
 
 export async function POST(req: NextRequest) {
   if (!isTursoConfigured()) {
-    return NextResponse.json({ success: false, message: 'Turso not configured' }, { status: 503 });
+    return NextResponse.json({ success: false, message: 'Turso not configured' }, { status: 503, headers: noCacheHeaders });
   }
 
   try {
@@ -96,16 +111,20 @@ export async function POST(req: NextRequest) {
       case 'enquiries':
         success = await saveTursoEnquiry(data);
         break;
+      case 'offer':
+        success = await saveTursoSpecialOffer(data);
+        break;
       default:
-        return NextResponse.json({ success: false, message: 'Unknown entity' }, { status: 400 });
+        return NextResponse.json({ success: false, message: 'Unknown entity' }, { status: 400, headers: noCacheHeaders });
     }
 
-    return NextResponse.json({ success });
+    return NextResponse.json({ success }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error('[API /api/turso POST] Error saving:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 500, headers: noCacheHeaders });
   }
 }
+
 
 export async function DELETE(req: NextRequest) {
   if (!isTursoConfigured()) {

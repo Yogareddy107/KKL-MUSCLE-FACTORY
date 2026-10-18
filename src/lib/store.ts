@@ -1,11 +1,11 @@
 import { 
   GymSettings, Member, MembershipPlan, Membership, Trainer, 
-  AttendanceRecord, WorkoutPlan, DietPlan, Enquiry, GalleryItem, DietAssignment, WorkoutAssignment 
+  AttendanceRecord, WorkoutPlan, DietPlan, Enquiry, GalleryItem, DietAssignment, WorkoutAssignment, SpecialOffer 
 } from '@/types';
 import { 
   initialGymSettings, initialPlans, initialTrainers, initialMembers, 
   initialMemberships, initialAttendance, initialWorkoutPlans, 
-  initialDietPlans, initialEnquiries, initialGallery 
+  initialDietPlans, initialEnquiries, initialGallery, initialSpecialOffer 
 } from './initialData';
 import { supabase, isSupabaseConfigured } from './supabase';
 
@@ -36,7 +36,14 @@ function setLocal<T>(key: string, data: T): void {
 async function fetchFromTurso<T>(entity: string): Promise<T | null> {
   if (typeof window === 'undefined') return null;
   try {
-    const res = await fetch(`/api/turso?entity=${entity}`);
+    // Bust caching with timestamp + cache: no-store to guarantee instant cross-device updates
+    const res = await fetch(`/api/turso?entity=${entity}&_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    });
     if (res.ok) {
       const json = await res.json();
       if (json.success && json.data) {
@@ -49,29 +56,39 @@ async function fetchFromTurso<T>(entity: string): Promise<T | null> {
   return null;
 }
 
-async function saveToTurso(entity: string, data: any): Promise<void> {
-  if (typeof window === 'undefined') return;
+async function saveToTurso(entity: string, data: any): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
   try {
-    await fetch('/api/turso', {
+    const res = await fetch('/api/turso', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entity, data }),
     });
+    if (res.ok) {
+      const json = await res.json();
+      return Boolean(json.success);
+    }
+    console.warn(`[Turso Sync HTTP ${res.status}] Failed to save ${entity}`);
+    return false;
   } catch (e) {
     console.warn(`[Turso Sync] Failed to save ${entity}`, e);
+    return false;
   }
 }
 
-async function deleteFromTurso(entity: string, id: string): Promise<void> {
-  if (typeof window === 'undefined') return;
+async function deleteFromTurso(entity: string, id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
   try {
-    await fetch(`/api/turso?entity=${entity}&id=${encodeURIComponent(id)}`, {
+    const res = await fetch(`/api/turso?entity=${entity}&id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+    return res.ok;
   } catch (e) {
     console.warn(`[Turso Sync] Failed to delete ${entity}:${id}`, e);
+    return false;
   }
 }
+
 
 // -----------------------------------------------------------------------------
 // GYM SETTINGS
@@ -110,7 +127,7 @@ export async function updateGymSettings(settings: Partial<GymSettings>): Promise
   const updated: GymSettings = { ...current, ...settings, updated_at: new Date().toISOString() };
 
   setLocal('settings', updated);
-  saveToTurso('settings', updated);
+  await saveToTurso('settings', updated);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -164,7 +181,7 @@ export async function saveMembershipPlan(plan: MembershipPlan): Promise<Membersh
   }
 
   setLocal('plans', updated);
-  saveToTurso('plans', plan);
+  await saveToTurso('plans', plan);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -181,7 +198,7 @@ export async function deleteMembershipPlan(id: string): Promise<MembershipPlan[]
   const updated = current.filter(p => p.id !== id);
 
   setLocal('plans', updated);
-  deleteFromTurso('plans', id);
+  await deleteFromTurso('plans', id);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -192,6 +209,7 @@ export async function deleteMembershipPlan(id: string): Promise<MembershipPlan[]
   }
   return updated;
 }
+
 
 // -----------------------------------------------------------------------------
 // MEMBERS
@@ -235,7 +253,7 @@ export async function saveMember(member: Member): Promise<Member[]> {
   }
 
   setLocal('members', updated);
-  saveToTurso('members', member);
+  await saveToTurso('members', member);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -259,7 +277,7 @@ export async function toggleMemberStatus(id: string): Promise<Member[]> {
   const modified = updated.find(m => m.id === id);
   if (modified) {
     setLocal('members', updated);
-    saveToTurso('members', modified);
+    await saveToTurso('members', modified);
     if (isSupabaseConfigured() && supabase) {
       try {
         await supabase.from('members').update({ status: modified.status }).eq('id', id);
@@ -276,7 +294,7 @@ export async function deleteMember(id: string): Promise<Member[]> {
   const updated = current.filter(m => m.id !== id);
 
   setLocal('members', updated);
-  deleteFromTurso('members', id);
+  await deleteFromTurso('members', id);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -330,7 +348,7 @@ export async function saveTrainer(trainer: Trainer): Promise<Trainer[]> {
   }
 
   setLocal('trainers', updated);
-  saveToTurso('trainers', trainer);
+  await saveToTurso('trainers', trainer);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -347,7 +365,7 @@ export async function deleteTrainer(id: string): Promise<Trainer[]> {
   const updated = current.filter(t => t.id !== id);
 
   setLocal('trainers', updated);
-  deleteFromTurso('trainers', id);
+  await deleteFromTurso('trainers', id);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -358,6 +376,7 @@ export async function deleteTrainer(id: string): Promise<Trainer[]> {
   }
   return updated;
 }
+
 
 // -----------------------------------------------------------------------------
 // ATTENDANCE
@@ -491,7 +510,7 @@ export async function saveWorkoutPlan(plan: WorkoutPlan): Promise<WorkoutPlan[]>
   }
 
   setLocal('workout_plans', updated);
-  saveToTurso('workouts', plan);
+  await saveToTurso('workouts', plan);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -516,7 +535,7 @@ export async function deleteWorkoutPlan(id: string): Promise<WorkoutPlan[]> {
   const updated = current.filter(p => p.id !== id);
 
   setLocal('workout_plans', updated);
-  deleteFromTurso('workouts', id);
+  await deleteFromTurso('workouts', id);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -613,7 +632,7 @@ export async function saveDietPlan(plan: DietPlan): Promise<DietPlan[]> {
   }
 
   setLocal('diet_plans', updated);
-  saveToTurso('diets', plan);
+  await saveToTurso('diets', plan);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -630,7 +649,7 @@ export async function deleteDietPlan(id: string): Promise<DietPlan[]> {
   const updated = current.filter(d => d.id !== id);
 
   setLocal('diet_plans', updated);
-  deleteFromTurso('diets', id);
+  await deleteFromTurso('diets', id);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -723,7 +742,7 @@ export async function submitEnquiry(enquiry: Omit<Enquiry, 'id' | 'status' | 'cr
 
   const current = await getEnquiries();
   setLocal('enquiries', [newEnq, ...current]);
-  saveToTurso('enquiries', newEnq);
+  await saveToTurso('enquiries', newEnq);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -743,7 +762,7 @@ export async function updateEnquiryStatus(id: string, status: Enquiry['status'],
 
   setLocal('enquiries', updated);
   if (modified) {
-    saveToTurso('enquiries', modified);
+    await saveToTurso('enquiries', modified);
   }
 
   if (isSupabaseConfigured() && supabase) {
@@ -795,7 +814,7 @@ export async function saveGalleryItem(item: GalleryItem): Promise<GalleryItem[]>
   }
 
   setLocal('gallery', updated);
-  saveToTurso('gallery', item);
+  await saveToTurso('gallery', item);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -812,7 +831,7 @@ export async function deleteGalleryItem(id: string): Promise<GalleryItem[]> {
   const updated = current.filter(g => g.id !== id);
 
   setLocal('gallery', updated);
-  deleteFromTurso('gallery', id);
+  await deleteFromTurso('gallery', id);
 
   if (isSupabaseConfigured() && supabase) {
     try {
@@ -823,6 +842,29 @@ export async function deleteGalleryItem(id: string): Promise<GalleryItem[]> {
   }
   return updated;
 }
+
+// -----------------------------------------------------------------------------
+// SPECIAL OFFER & PROMO POPUP
+// -----------------------------------------------------------------------------
+export async function getSpecialOffer(): Promise<SpecialOffer> {
+  const tursoData = await fetchFromTurso<SpecialOffer>('offer');
+  if (tursoData) {
+    setLocal('special_offer', tursoData);
+    return tursoData;
+  }
+  return getLocal<SpecialOffer>('special_offer', initialSpecialOffer);
+}
+
+export async function saveSpecialOffer(offer: SpecialOffer): Promise<SpecialOffer> {
+  const updated: SpecialOffer = {
+    ...offer,
+    updated_at: new Date().toISOString(),
+  };
+  setLocal('special_offer', updated);
+  await saveToTurso('offer', updated);
+  return updated;
+}
+
 
 // -----------------------------------------------------------------------------
 // DASHBOARD METRICS SUMMARY

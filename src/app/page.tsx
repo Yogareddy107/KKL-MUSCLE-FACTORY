@@ -8,12 +8,16 @@ import { GallerySection } from '@/components/GallerySection';
 import { ContactSection } from '@/components/ContactSection';
 import { Footer } from '@/components/Footer';
 import { WhatsAppDietButton } from '@/components/WhatsAppDietButton';
+import { OfferModal } from '@/components/OfferModal';
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-brand-dark flex flex-col selection:bg-brand-gold selection:text-brand-dark">
-      {/* Sticky Header */}
+      {/* Sticky / Floating Header */}
       <Navbar />
+
+      {/* Special Offer Popup Modal */}
+      <OfferModal />
 
       {/* Main Content Sections */}
       <main className="flex-1">
@@ -46,3 +50,4 @@ export default function HomePage() {
     </div>
   );
 }
+

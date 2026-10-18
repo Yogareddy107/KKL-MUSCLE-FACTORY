@@ -184,3 +184,16 @@ export interface GalleryItem {
   display_order: number;
   is_published: boolean;
 }
+
+export interface SpecialOffer {
+  id: string;
+  title: string;
+  badge: string;
+  description: string;
+  image_url: string;
+  cta_text: string;
+  cta_link: string;
+  is_active: boolean;
+  updated_at?: string;
+}
+

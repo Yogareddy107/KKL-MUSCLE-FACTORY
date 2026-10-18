@@ -1,11 +1,14 @@
 import { createClient } from '@libsql/client';
 import { 
   GymSettings, MembershipPlan, Trainer, Member, 
-  WorkoutPlan, DietPlan, GalleryItem, Enquiry 
+  WorkoutPlan, DietPlan, GalleryItem, Enquiry, SpecialOffer 
 } from '@/types';
 
-const tursoUrl = process.env.TURSO_DATABASE_URL || '';
-const tursoAuthToken = process.env.TURSO_AUTH_TOKEN || '';
+const defaultTursoUrl = 'libsql://kkl-muscle-factory-yogareddy107.aws-ap-south-1.turso.io';
+const defaultTursoAuthToken = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTIzMjk4MTgsImlkIjoiMDFhMTRmMjAtMGIwMS03NjliLWFjMjItNzMwNzMyZWI0NDZhIiwia2lkIjoia2Qwa191STYtSGtpNVA0anhhQ3FqdlRHdi1jZE9GYVltcjlHOFAtWkk4RSIsInJpZCI6IjM4MTM0NDUzLTAwY2QtNDE1Ny1hYjk4LTU1YmY3MTI4MDVlMiJ9.i-pN6FL8Dx2LOsm6ZnaaxDjRnl7gVSlbjHx2iIRAXikXbRS5Q56f-3C-Gjiwf0HoHgNxtI2ba_XKb1N9QjFgAA';
+
+const tursoUrl = process.env.TURSO_DATABASE_URL || defaultTursoUrl;
+const tursoAuthToken = process.env.TURSO_AUTH_TOKEN || defaultTursoAuthToken;
 
 export const isTursoConfigured = (): boolean => {
   return Boolean(
@@ -21,6 +24,7 @@ export const tursoClient = isTursoConfigured()
       authToken: tursoAuthToken,
     })
   : null;
+
 
 // ============================================================================
 // GYM SETTINGS
@@ -476,3 +480,55 @@ export async function saveTursoEnquiry(enquiry: Enquiry): Promise<boolean> {
     return false;
   }
 }
+
+// ============================================================================
+// SPECIAL OFFER
+// ============================================================================
+export async function getTursoSpecialOffer(): Promise<SpecialOffer | null> {
+  if (!tursoClient) return null;
+  try {
+    const res = await tursoClient.execute("SELECT * FROM special_offers WHERE id = 'active-offer' LIMIT 1");
+    if (!res.rows || res.rows.length === 0) return null;
+    const r = res.rows[0];
+    return {
+      id: String(r.id),
+      title: String(r.title),
+      badge: String(r.badge),
+      description: String(r.description),
+      image_url: r.image_url ? String(r.image_url) : '',
+      cta_text: String(r.cta_text),
+      cta_link: String(r.cta_link),
+      is_active: Boolean(r.is_active),
+      updated_at: r.updated_at ? String(r.updated_at) : undefined,
+    };
+  } catch (err) {
+    console.warn('[Turso] getTursoSpecialOffer error:', err);
+    return null;
+  }
+}
+
+export async function saveTursoSpecialOffer(offer: SpecialOffer): Promise<boolean> {
+  if (!tursoClient) return false;
+  try {
+    await tursoClient.execute({
+      sql: `INSERT OR REPLACE INTO special_offers (id, title, badge, description, image_url, cta_text, cta_link, is_active, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        'active-offer',
+        offer.title,
+        offer.badge,
+        offer.description,
+        offer.image_url || '',
+        offer.cta_text,
+        offer.cta_link,
+        offer.is_active ? 1 : 0,
+        new Date().toISOString()
+      ]
+    });
+    return true;
+  } catch (err) {
+    console.warn('[Turso] saveTursoSpecialOffer error:', err);
+    return false;
+  }
+}
+
