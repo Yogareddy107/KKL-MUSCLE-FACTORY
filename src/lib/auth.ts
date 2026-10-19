@@ -9,8 +9,10 @@ const MEMBER_SESSION_KEY = 'kkl_member_auth_session';
 export function isAdminAuthenticated(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    const session = localStorage.getItem(ADMIN_SESSION_KEY);
-    return session === 'kkl_admin_verified_session';
+    const session = sessionStorage.getItem(ADMIN_SESSION_KEY);
+    if (session === 'kkl_admin_verified_session') return true;
+    // Check cookie
+    return document.cookie.includes('admin_session=kkl_admin_verified_session');
   } catch {
     return false;
   }
@@ -18,13 +20,17 @@ export function isAdminAuthenticated(): boolean {
 
 export function setAdminAuthenticated(): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(ADMIN_SESSION_KEY, 'kkl_admin_verified_session');
+  try {
+    sessionStorage.setItem(ADMIN_SESSION_KEY, 'kkl_admin_verified_session');
+  } catch {}
   document.cookie = `admin_session=kkl_admin_verified_session; path=/; max-age=86400; SameSite=Lax`;
 }
 
 export function adminLogout(): void {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(ADMIN_SESSION_KEY);
+  try {
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  } catch {}
   document.cookie = `admin_session=; path=/; max-age=0; SameSite=Lax`;
 }
 
@@ -44,7 +50,7 @@ export async function loginWithPin(pin: string): Promise<{ success: boolean; mes
 export function getCurrentMember(): Member | null {
   if (typeof window === 'undefined') return null;
   try {
-    const data = localStorage.getItem(MEMBER_SESSION_KEY);
+    const data = sessionStorage.getItem(MEMBER_SESSION_KEY);
     return data ? JSON.parse(data) : null;
   } catch {
     return null;
@@ -53,13 +59,17 @@ export function getCurrentMember(): Member | null {
 
 export function setMemberSession(member: Member): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(MEMBER_SESSION_KEY, JSON.stringify(member));
+  try {
+    sessionStorage.setItem(MEMBER_SESSION_KEY, JSON.stringify(member));
+  } catch {}
   document.cookie = `member_session=${member.id}; path=/; max-age=86400; SameSite=Lax`;
 }
 
 export function memberLogout(): void {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(MEMBER_SESSION_KEY);
+  try {
+    sessionStorage.removeItem(MEMBER_SESSION_KEY);
+  } catch {}
   document.cookie = `member_session=; path=/; max-age=0; SameSite=Lax`;
 }
 

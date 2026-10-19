@@ -9,6 +9,9 @@ import {
   getTursoGallery, saveTursoGallery, deleteTursoGallery,
   getTursoEnquiries, saveTursoEnquiry, 
   getTursoSpecialOffer, saveTursoSpecialOffer,
+  getTursoAttendance, saveTursoAttendance,
+  getTursoWorkoutAssignments, saveTursoWorkoutAssignment,
+  getTursoDietAssignments, saveTursoDietAssignment,
   isTursoConfigured
 } from '@/lib/turso';
 
@@ -67,6 +70,18 @@ export async function GET(req: NextRequest) {
         const data = await getTursoSpecialOffer();
         return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
       }
+      case 'attendance': {
+        const data = await getTursoAttendance();
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
+      }
+      case 'workout_assignments': {
+        const data = await getTursoWorkoutAssignments();
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
+      }
+      case 'diet_assignments': {
+        const data = await getTursoDietAssignments();
+        return NextResponse.json({ success: true, data }, { headers: noCacheHeaders });
+      }
       default:
         return NextResponse.json({ success: false, message: 'Invalid entity specified' }, { status: 400, headers: noCacheHeaders });
     }
@@ -113,6 +128,15 @@ export async function POST(req: NextRequest) {
         break;
       case 'offer':
         success = await saveTursoSpecialOffer(data);
+        break;
+      case 'attendance':
+        success = await saveTursoAttendance(data);
+        break;
+      case 'workout_assignments':
+        success = await saveTursoWorkoutAssignment(data);
+        break;
+      case 'diet_assignments':
+        success = await saveTursoDietAssignment(data);
         break;
       default:
         return NextResponse.json({ success: false, message: 'Unknown entity' }, { status: 400, headers: noCacheHeaders });

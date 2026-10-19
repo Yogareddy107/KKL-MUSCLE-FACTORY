@@ -1,7 +1,8 @@
 import { createClient } from '@libsql/client';
 import { 
   GymSettings, MembershipPlan, Trainer, Member, 
-  WorkoutPlan, DietPlan, GalleryItem, Enquiry, SpecialOffer 
+  WorkoutPlan, DietPlan, GalleryItem, Enquiry, SpecialOffer,
+  AttendanceRecord, WorkoutAssignment, DietAssignment
 } from '@/types';
 
 const defaultTursoUrl = 'https://kkl-muscle-factory-yogareddy107.aws-ap-south-1.turso.io';
@@ -546,4 +547,149 @@ export async function saveTursoSpecialOffer(offer: SpecialOffer): Promise<boolea
     return false;
   }
 }
+
+// ============================================================================
+// ATTENDANCE RECORDS
+// ============================================================================
+export async function getTursoAttendance(): Promise<AttendanceRecord[] | null> {
+  if (!tursoClient) return null;
+  try {
+    const res = await tursoClient.execute(`
+      SELECT a.*, m.member_code, m.full_name, m.phone, m.status as member_status 
+      FROM attendance_records a 
+      LEFT JOIN members m ON a.member_id = m.id 
+      ORDER BY a.check_in_date DESC, a.check_in_time DESC
+    `);
+    if (!res.rows) return null;
+    return res.rows.map(r => ({
+      id: String(r.id),
+      member_id: String(r.member_id),
+      check_in_date: String(r.check_in_date),
+      check_in_time: String(r.check_in_time),
+      session_type: (String(r.session_type || 'General') as 'Morning' | 'Evening' | 'General'),
+      created_at: r.created_at ? String(r.created_at) : undefined,
+      member: r.full_name ? {
+        id: String(r.member_id),
+        member_code: String(r.member_code || ''),
+        full_name: String(r.full_name || ''),
+        phone: String(r.phone || ''),
+        gender: 'Male',
+        status: (String(r.member_status || 'active') as any),
+        join_date: '',
+      } : undefined,
+    }));
+  } catch (err) {
+    console.warn('[Turso] getTursoAttendance error:', err);
+    return null;
+  }
+}
+
+export async function saveTursoAttendance(record: AttendanceRecord): Promise<boolean> {
+  if (!tursoClient) return false;
+  try {
+    await tursoClient.execute({
+      sql: `INSERT OR REPLACE INTO attendance_records (id, member_id, check_in_date, check_in_time, session_type, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        record.id,
+        record.member_id,
+        record.check_in_date,
+        record.check_in_time,
+        record.session_type || 'General',
+        record.created_at || new Date().toISOString()
+      ]
+    });
+    return true;
+  } catch (err) {
+    console.warn('[Turso] saveTursoAttendance error:', err);
+    return false;
+  }
+}
+
+// ============================================================================
+// WORKOUT ASSIGNMENTS
+// ============================================================================
+export async function getTursoWorkoutAssignments(): Promise<WorkoutAssignment[] | null> {
+  if (!tursoClient) return null;
+  try {
+    const res = await tursoClient.execute("SELECT * FROM workout_assignments");
+    if (!res.rows) return null;
+    return res.rows.map(r => ({
+      id: String(r.id),
+      member_id: String(r.member_id),
+      plan_id: String(r.plan_id),
+      assigned_date: String(r.assigned_date || ''),
+      notes: r.notes ? String(r.notes) : undefined,
+    }));
+  } catch (err) {
+    console.warn('[Turso] getTursoWorkoutAssignments error:', err);
+    return null;
+  }
+}
+
+export async function saveTursoWorkoutAssignment(assignment: WorkoutAssignment): Promise<boolean> {
+  if (!tursoClient) return false;
+  try {
+    await tursoClient.execute({
+      sql: `INSERT OR REPLACE INTO workout_assignments (id, member_id, plan_id, assigned_date, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        assignment.id,
+        assignment.member_id,
+        assignment.plan_id,
+        assignment.assigned_date || new Date().toISOString().split('T')[0],
+        assignment.notes || null,
+        new Date().toISOString()
+      ]
+    });
+    return true;
+  } catch (err) {
+    console.warn('[Turso] saveTursoWorkoutAssignment error:', err);
+    return false;
+  }
+}
+
+// ============================================================================
+// DIET ASSIGNMENTS
+// ============================================================================
+export async function getTursoDietAssignments(): Promise<DietAssignment[] | null> {
+  if (!tursoClient) return null;
+  try {
+    const res = await tursoClient.execute("SELECT * FROM diet_assignments");
+    if (!res.rows) return null;
+    return res.rows.map(r => ({
+      id: String(r.id),
+      member_id: String(r.member_id),
+      plan_id: String(r.plan_id),
+      assigned_date: String(r.assigned_date || ''),
+      special_notes: r.special_notes ? String(r.special_notes) : undefined,
+    }));
+  } catch (err) {
+    console.warn('[Turso] getTursoDietAssignments error:', err);
+    return null;
+  }
+}
+
+export async function saveTursoDietAssignment(assignment: DietAssignment): Promise<boolean> {
+  if (!tursoClient) return false;
+  try {
+    await tursoClient.execute({
+      sql: `INSERT OR REPLACE INTO diet_assignments (id, member_id, plan_id, assigned_date, special_notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        assignment.id,
+        assignment.member_id,
+        assignment.plan_id,
+        assignment.assigned_date || new Date().toISOString().split('T')[0],
+        assignment.special_notes || null,
+        new Date().toISOString()
+      ]
+    });
+    return true;
+  } catch (err) {
+    console.warn('[Turso] saveTursoDietAssignment error:', err);
+    return false;
+  }
+}
+
 
