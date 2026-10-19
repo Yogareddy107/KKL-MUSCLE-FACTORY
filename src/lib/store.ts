@@ -10,93 +10,17 @@ import {
 import { supabase, isSupabaseConfigured } from './supabase';
 
 // -----------------------------------------------------------------------------
-// TURSO SYNC HELPERS (Edge libSQL API bridge - 100% Cloud Database)
+// PURE SUPABASE CLOUD BACKEND (Zero LocalStorage, 100% Cloud Realtime Database)
 // -----------------------------------------------------------------------------
 export interface CloudSyncResult {
   success: boolean;
   error?: string;
 }
 
-async function fetchFromTurso<T>(entity: string): Promise<T | null> {
-  if (typeof window === 'undefined') return null;
-  try {
-    // Bust caching with timestamp + cache: no-store to guarantee instant cross-device updates
-    const res = await fetch(`/api/turso?entity=${entity}&_t=${Date.now()}`, {
-      cache: 'no-store',
-      headers: {
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
-    });
-    if (res.ok) {
-      const json = await res.json().catch(() => null);
-      if (json && json.success && json.data !== undefined) {
-        return json.data as T;
-      }
-    } else {
-      console.warn(`[Turso Fetch HTTP ${res.status}] Failed to fetch ${entity}`);
-    }
-  } catch (e) {
-    console.warn(`[Turso Fetch] Network error for ${entity}:`, e);
-  }
-  return null;
-}
-
-async function saveToTurso(entity: string, data: any): Promise<CloudSyncResult> {
-  if (typeof window === 'undefined') return { success: false, error: 'SSR environment' };
-  try {
-    const res = await fetch(`/api/turso?_t=${Date.now()}`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store'
-      },
-      body: JSON.stringify({ entity, data }),
-    });
-    const json = await res.json().catch(() => null);
-    if (res.ok && json?.success) {
-      return { success: true };
-    }
-    const errMsg = json?.error || json?.message || `HTTP ${res.status} ${res.statusText}`;
-    console.error(`[Turso Save Error] Failed to save ${entity}:`, errMsg);
-    return { success: false, error: errMsg };
-  } catch (e: any) {
-    console.error(`[Turso Save Exception] Failed to save ${entity}:`, e);
-    return { success: false, error: e?.message || 'Network offline or server unreachable' };
-  }
-}
-
-async function deleteFromTurso(entity: string, id: string): Promise<CloudSyncResult> {
-  if (typeof window === 'undefined') return { success: false, error: 'SSR environment' };
-  try {
-    const res = await fetch(`/api/turso?entity=${entity}&id=${encodeURIComponent(id)}&_t=${Date.now()}`, {
-      method: 'DELETE',
-      headers: { 'Cache-Control': 'no-cache, no-store' }
-    });
-    const json = await res.json().catch(() => null);
-    if (res.ok && json?.success !== false) {
-      return { success: true };
-    }
-    const errMsg = json?.error || json?.message || `HTTP ${res.status}`;
-    console.error(`[Turso Delete Error] Failed to delete ${entity}:${id}:`, errMsg);
-    return { success: false, error: errMsg };
-  } catch (e: any) {
-    console.error(`[Turso Delete Exception] Failed to delete ${entity}:${id}:`, e);
-    return { success: false, error: e?.message || 'Network offline or server unreachable' };
-  }
-}
-
 // -----------------------------------------------------------------------------
 // GYM SETTINGS
 // -----------------------------------------------------------------------------
 export async function getGymSettings(): Promise<GymSettings> {
-  // 1. Try Turso Cloud Database
-  const tursoData = await fetchFromTurso<GymSettings>('settings');
-  if (tursoData) {
-    return tursoData;
-  }
-
-  // 2. Try Supabase
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
@@ -108,11 +32,9 @@ export async function getGymSettings(): Promise<GymSettings> {
         return data as GymSettings;
       }
     } catch (e) {
-      console.warn('Supabase getGymSettings fallback', e);
+      console.warn('[Supabase] getGymSettings error:', e);
     }
   }
-
-  // 3. Fallback to Initial Default
   return initialGymSettings;
 }
 
@@ -120,16 +42,27 @@ export async function updateGymSettings(settings: Partial<GymSettings>): Promise
   const current = await getGymSettings();
   const updated: GymSettings = { ...current, ...settings, updated_at: new Date().toISOString() };
 
-  const cloudRes = await saveToTurso('settings', updated);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('gym_settings').upsert(updated);
-    } catch (e) {
-      console.warn('Supabase updateGymSettings fallback error', e);
+      const { error } = await supabase.from('gym_settings').upsert(updated);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+        console.error('[Supabase] updateGymSettings error:', error);
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
+      console.error('[Supabase] updateGymSettings exception:', e);
     }
+  } else {
+    cloudError = 'Supabase client not configured';
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -137,13 +70,6 @@ export async function updateGymSettings(settings: Partial<GymSettings>): Promise
 // MEMBERSHIP PLANS
 // -----------------------------------------------------------------------------
 export async function getMembershipPlans(): Promise<MembershipPlan[]> {
-  // 1. Try Turso Cloud Database
-  const tursoData = await fetchFromTurso<MembershipPlan[]>('plans');
-  if (tursoData && tursoData.length > 0) {
-    return tursoData;
-  }
-
-  // 2. Try Supabase
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
@@ -154,10 +80,9 @@ export async function getMembershipPlans(): Promise<MembershipPlan[]> {
         return data as MembershipPlan[];
       }
     } catch (e) {
-      console.warn('Supabase getMembershipPlans fallback', e);
+      console.warn('[Supabase] getMembershipPlans error:', e);
     }
   }
-
   return initialPlans;
 }
 
@@ -172,16 +97,24 @@ export async function saveMembershipPlan(plan: MembershipPlan): Promise<Membersh
     updated = [...current, plan];
   }
 
-  const cloudRes = await saveToTurso('plans', plan);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('membership_plans').upsert(plan);
-    } catch (e) {
-      console.warn('Supabase saveMembershipPlan fallback error', e);
+      const { error } = await supabase.from('membership_plans').upsert(plan);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+        console.error('[Supabase] saveMembershipPlan error:', error);
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -189,16 +122,23 @@ export async function deleteMembershipPlan(id: string): Promise<MembershipPlan[]
   const current = await getMembershipPlans();
   const updated = current.filter(p => p.id !== id);
 
-  const cloudRes = await deleteFromTurso('plans', id);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('membership_plans').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Supabase deleteMembershipPlan fallback error', e);
+      const { error } = await supabase.from('membership_plans').delete().eq('id', id);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -206,13 +146,6 @@ export async function deleteMembershipPlan(id: string): Promise<MembershipPlan[]
 // MEMBERS
 // -----------------------------------------------------------------------------
 export async function getMembers(): Promise<Member[]> {
-  // 1. Try Turso Cloud Database
-  const tursoData = await fetchFromTurso<Member[]>('members');
-  if (tursoData && tursoData.length > 0) {
-    return tursoData;
-  }
-
-  // 2. Try Supabase
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
@@ -223,10 +156,9 @@ export async function getMembers(): Promise<Member[]> {
         return data as Member[];
       }
     } catch (e) {
-      console.warn('Supabase getMembers fallback', e);
+      console.warn('[Supabase] getMembers error:', e);
     }
   }
-
   return initialMembers;
 }
 
@@ -241,16 +173,29 @@ export async function saveMember(member: Member): Promise<Member[]> {
     updated = [member, ...current];
   }
 
-  const cloudRes = await saveToTurso('members', member);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('members').upsert(member);
-    } catch (e) {
-      console.warn('Supabase saveMember fallback error', e);
+      const { error } = await supabase.from('members').upsert({
+        ...member,
+        updated_at: new Date().toISOString(),
+      });
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+        console.error('[Supabase] saveMember error:', error);
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
+  } else {
+    cloudError = 'Supabase not configured';
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -264,17 +209,24 @@ export async function toggleMemberStatus(id: string): Promise<Member[]> {
     return m;
   });
   const modified = updated.find(m => m.id === id);
-  if (modified) {
-    const cloudRes = await saveToTurso('members', modified);
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        await supabase.from('members').update({ status: modified.status }).eq('id', id);
-      } catch (e) {
-        console.warn('Supabase toggleMemberStatus fallback error', e);
+
+  let cloudSuccess = false;
+  let cloudError = '';
+
+  if (modified && isSupabaseConfigured() && supabase) {
+    try {
+      const { error } = await supabase.from('members').update({ status: modified.status }).eq('id', id);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
       }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
-    Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
   }
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -282,16 +234,23 @@ export async function deleteMember(id: string): Promise<Member[]> {
   const current = await getMembers();
   const updated = current.filter(m => m.id !== id);
 
-  const cloudRes = await deleteFromTurso('members', id);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('members').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Supabase deleteMember fallback error', e);
+      const { error } = await supabase.from('members').delete().eq('id', id);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -299,13 +258,6 @@ export async function deleteMember(id: string): Promise<Member[]> {
 // TRAINERS
 // -----------------------------------------------------------------------------
 export async function getTrainers(): Promise<Trainer[]> {
-  // 1. Try Turso Cloud Database
-  const tursoData = await fetchFromTurso<Trainer[]>('trainers');
-  if (tursoData && tursoData.length > 0) {
-    return tursoData;
-  }
-
-  // 2. Try Supabase
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
@@ -316,10 +268,9 @@ export async function getTrainers(): Promise<Trainer[]> {
         return data as Trainer[];
       }
     } catch (e) {
-      console.warn('Supabase getTrainers fallback', e);
+      console.warn('[Supabase] getTrainers error:', e);
     }
   }
-
   return initialTrainers;
 }
 
@@ -334,16 +285,27 @@ export async function saveTrainer(trainer: Trainer): Promise<Trainer[]> {
     updated = [...current, trainer];
   }
 
-  const cloudRes = await saveToTurso('trainers', trainer);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('trainers').upsert(trainer);
-    } catch (e) {
-      console.warn('Supabase saveTrainer fallback error', e);
+      const { error } = await supabase.from('trainers').upsert({
+        ...trainer,
+        updated_at: new Date().toISOString()
+      });
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+        console.error('[Supabase] saveTrainer error:', error);
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -351,16 +313,23 @@ export async function deleteTrainer(id: string): Promise<Trainer[]> {
   const current = await getTrainers();
   const updated = current.filter(t => t.id !== id);
 
-  const cloudRes = await deleteFromTurso('trainers', id);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('trainers').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Supabase deleteTrainer fallback error', e);
+      const { error } = await supabase.from('trainers').delete().eq('id', id);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -368,25 +337,19 @@ export async function deleteTrainer(id: string): Promise<Trainer[]> {
 // ATTENDANCE
 // -----------------------------------------------------------------------------
 export async function getAttendance(): Promise<AttendanceRecord[]> {
-  // 1. Try Turso Cloud Database
-  const tursoData = await fetchFromTurso<AttendanceRecord[]>('attendance');
-  if (tursoData && tursoData.length > 0) {
-    return tursoData;
-  }
-
-  // 2. Try Supabase
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
         .from('attendance')
         .select('*, member:members(*)')
         .order('check_in_date', { ascending: false });
-      if (!error && data && data.length > 0) return data as AttendanceRecord[];
+      if (!error && data && data.length > 0) {
+        return data as AttendanceRecord[];
+      }
     } catch (e) {
-      console.warn('Supabase getAttendance fallback', e);
+      console.warn('[Supabase] getAttendance error:', e);
     }
   }
-
   return initialAttendance;
 }
 
@@ -406,11 +369,11 @@ export async function recordAttendance(
   const member = members.find(m => m.id === memberId);
 
   if (!member) {
-    return { success: false, message: 'Member not found.' };
+    return { success: false, message: 'Member not found in database.' };
   }
 
   if (member.status !== 'active') {
-    return { success: false, message: `Member is currently marked as ${member.status}. Please renew membership.` };
+    return { success: false, message: `Member is currently ${member.status}. Please renew membership.` };
   }
 
   const today = new Date().toISOString().split('T')[0];
@@ -439,20 +402,17 @@ export async function recordAttendance(
     member: member,
   };
 
-  // 1. Save directly to Turso Edge Cloud DB
-  await saveToTurso('attendance', newRecord);
-
-  // 2. Also sync to Supabase
   if (isSupabaseConfigured() && supabase) {
     try {
       await supabase.from('attendance').insert({
+        id: newRecord.id,
         member_id: memberId,
         check_in_date: today,
         check_in_time: checkInTime,
         session_type: sessionType,
       });
     } catch (e) {
-      console.error('Supabase recordAttendance error', e);
+      console.error('[Supabase] recordAttendance error:', e);
     }
   }
 
@@ -467,27 +427,19 @@ export async function recordAttendance(
 // WORKOUT PLANS & ASSIGNMENTS
 // -----------------------------------------------------------------------------
 export async function getWorkoutPlans(): Promise<WorkoutPlan[]> {
-  // 1. Try Turso Cloud Database
-  const tursoData = await fetchFromTurso<WorkoutPlan[]>('workouts');
-  if (tursoData && tursoData.length > 0) {
-    return tursoData;
-  }
-
-  // 2. Try Supabase
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
         .from('workout_plans')
-        .select('*, exercises(*)')
+        .select('*')
         .order('created_at', { ascending: false });
       if (!error && data && data.length > 0) {
         return data as WorkoutPlan[];
       }
     } catch (e) {
-      console.warn('Supabase getWorkoutPlans fallback', e);
+      console.warn('[Supabase] getWorkoutPlans error:', e);
     }
   }
-
   return initialWorkoutPlans;
 }
 
@@ -502,24 +454,23 @@ export async function saveWorkoutPlan(plan: WorkoutPlan): Promise<WorkoutPlan[]>
     updated = [plan, ...current];
   }
 
-  const cloudRes = await saveToTurso('workouts', plan);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('workout_plans').upsert({
-        id: plan.id,
-        title: plan.title,
-        description: plan.description,
-        difficulty: plan.difficulty,
-        days_per_week: plan.days_per_week,
-        is_published: plan.is_published,
-      });
-    } catch (e) {
-      console.warn('Supabase saveWorkoutPlan fallback error', e);
+      const { error } = await supabase.from('workout_plans').upsert(plan);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
 
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -527,50 +478,58 @@ export async function deleteWorkoutPlan(id: string): Promise<WorkoutPlan[]> {
   const current = await getWorkoutPlans();
   const updated = current.filter(p => p.id !== id);
 
-  const cloudRes = await deleteFromTurso('workouts', id);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('workout_plans').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Supabase deleteWorkoutPlan fallback error', e);
+      const { error } = await supabase.from('workout_plans').delete().eq('id', id);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
 export async function getMemberWorkoutAssignment(memberId: string): Promise<WorkoutPlan | null> {
-  const assignments = await fetchFromTurso<WorkoutAssignment[]>('workout_assignments');
-  const userAssign = assignments?.find(a => a.member_id === memberId);
-  const plans = await getWorkoutPlans();
-  if (userAssign) {
-    return plans.find(p => p.id === userAssign.plan_id) || plans[0] || null;
+  if (isSupabaseConfigured() && supabase) {
+    try {
+      const { data } = await supabase
+        .from('workout_assignments')
+        .select('*')
+        .eq('member_id', memberId)
+        .single();
+      if (data) {
+        const plans = await getWorkoutPlans();
+        return plans.find(p => p.id === data.plan_id) || plans[0] || null;
+      }
+    } catch (e) {
+      console.warn('[Supabase] getMemberWorkoutAssignment error:', e);
+    }
   }
+  const plans = await getWorkoutPlans();
   return plans[0] || null;
 }
 
 export async function assignWorkoutPlanToMember(memberId: string, planId: string, notes?: string): Promise<void> {
-  const assignment: WorkoutAssignment = {
-    id: 'assign-w-' + memberId,
-    member_id: memberId,
-    plan_id: planId,
-    assigned_date: new Date().toISOString().split('T')[0],
-    notes,
-  };
-
-  await saveToTurso('workout_assignments', assignment);
-
   if (isSupabaseConfigured() && supabase) {
     try {
       await supabase.from('workout_assignments').upsert({
+        id: 'assign-w-' + memberId,
         member_id: memberId,
         plan_id: planId,
         assigned_date: new Date().toISOString().split('T')[0],
         notes,
       });
     } catch (e) {
-      console.error('Supabase assignWorkoutPlan error', e);
+      console.error('[Supabase] assignWorkoutPlan error:', e);
     }
   }
 }
@@ -579,13 +538,6 @@ export async function assignWorkoutPlanToMember(memberId: string, planId: string
 // DIET PLANS & ASSIGNMENTS
 // -----------------------------------------------------------------------------
 export async function getDietPlans(): Promise<DietPlan[]> {
-  // 1. Try Turso Cloud Database
-  const tursoData = await fetchFromTurso<DietPlan[]>('diets');
-  if (tursoData && tursoData.length > 0) {
-    return tursoData;
-  }
-
-  // 2. Try Supabase
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
@@ -596,10 +548,9 @@ export async function getDietPlans(): Promise<DietPlan[]> {
         return data as DietPlan[];
       }
     } catch (e) {
-      console.warn('Supabase getDietPlans fallback', e);
+      console.warn('[Supabase] getDietPlans error:', e);
     }
   }
-
   return initialDietPlans;
 }
 
@@ -614,16 +565,23 @@ export async function saveDietPlan(plan: DietPlan): Promise<DietPlan[]> {
     updated = [plan, ...current];
   }
 
-  const cloudRes = await saveToTurso('diets', plan);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('diet_plans').upsert(plan);
-    } catch (e) {
-      console.warn('Supabase saveDietPlan fallback error', e);
+      const { error } = await supabase.from('diet_plans').upsert(plan);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -631,50 +589,58 @@ export async function deleteDietPlan(id: string): Promise<DietPlan[]> {
   const current = await getDietPlans();
   const updated = current.filter(d => d.id !== id);
 
-  const cloudRes = await deleteFromTurso('diets', id);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('diet_plans').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Supabase deleteDietPlan fallback error', e);
+      const { error } = await supabase.from('diet_plans').delete().eq('id', id);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
 export async function getMemberDietAssignment(memberId: string): Promise<DietPlan | null> {
-  const assignments = await fetchFromTurso<DietAssignment[]>('diet_assignments');
-  const userAssign = assignments?.find(a => a.member_id === memberId);
-  const plans = await getDietPlans();
-  if (userAssign) {
-    return plans.find(p => p.id === userAssign.plan_id) || plans[0] || null;
+  if (isSupabaseConfigured() && supabase) {
+    try {
+      const { data } = await supabase
+        .from('diet_assignments')
+        .select('*')
+        .eq('member_id', memberId)
+        .single();
+      if (data) {
+        const plans = await getDietPlans();
+        return plans.find(p => p.id === data.plan_id) || plans[0] || null;
+      }
+    } catch (e) {
+      console.warn('[Supabase] getMemberDietAssignment error:', e);
+    }
   }
+  const plans = await getDietPlans();
   return plans[0] || null;
 }
 
 export async function assignDietPlanToMember(memberId: string, planId: string, notes?: string): Promise<void> {
-  const assignment: DietAssignment = {
-    id: 'assign-d-' + memberId,
-    member_id: memberId,
-    plan_id: planId,
-    assigned_date: new Date().toISOString().split('T')[0],
-    special_notes: notes,
-  };
-
-  await saveToTurso('diet_assignments', assignment);
-
   if (isSupabaseConfigured() && supabase) {
     try {
       await supabase.from('diet_assignments').upsert({
+        id: 'assign-d-' + memberId,
         member_id: memberId,
         plan_id: planId,
         assigned_date: new Date().toISOString().split('T')[0],
         special_notes: notes,
       });
     } catch (e) {
-      console.error('Supabase assignDietPlan error', e);
+      console.error('[Supabase] assignDietPlan error:', e);
     }
   }
 }
@@ -683,11 +649,6 @@ export async function assignDietPlanToMember(memberId: string, planId: string, n
 // ENQUIRIES
 // -----------------------------------------------------------------------------
 export async function getEnquiries(): Promise<Enquiry[]> {
-  const tursoData = await fetchFromTurso<Enquiry[]>('enquiries');
-  if (tursoData && tursoData.length > 0) {
-    return tursoData;
-  }
-
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
@@ -698,7 +659,7 @@ export async function getEnquiries(): Promise<Enquiry[]> {
         return data as Enquiry[];
       }
     } catch (e) {
-      console.warn('Supabase getEnquiries fallback', e);
+      console.warn('[Supabase] getEnquiries error:', e);
     }
   }
   return initialEnquiries;
@@ -712,13 +673,11 @@ export async function submitEnquiry(enquiry: Omit<Enquiry, 'id' | 'status' | 'cr
     created_at: new Date().toISOString(),
   };
 
-  await saveToTurso('enquiries', newEnq);
-
   if (isSupabaseConfigured() && supabase) {
     try {
       await supabase.from('enquiries').insert(newEnq);
     } catch (e) {
-      console.error('Supabase submitEnquiry error', e);
+      console.error('[Supabase] submitEnquiry error:', e);
     }
   }
 
@@ -728,17 +687,12 @@ export async function submitEnquiry(enquiry: Omit<Enquiry, 'id' | 'status' | 'cr
 export async function updateEnquiryStatus(id: string, status: Enquiry['status'], notes?: string): Promise<Enquiry[]> {
   const current = await getEnquiries();
   const updated = current.map(e => e.id === id ? { ...e, status, admin_notes: notes ?? e.admin_notes } : e);
-  const modified = updated.find(e => e.id === id);
-
-  if (modified) {
-    await saveToTurso('enquiries', modified);
-  }
 
   if (isSupabaseConfigured() && supabase) {
     try {
       await supabase.from('enquiries').update({ status, admin_notes: notes }).eq('id', id);
     } catch (e) {
-      console.error('Supabase updateEnquiryStatus error', e);
+      console.error('[Supabase] updateEnquiryStatus error:', e);
     }
   }
   return updated;
@@ -748,11 +702,6 @@ export async function updateEnquiryStatus(id: string, status: Enquiry['status'],
 // GALLERY
 // -----------------------------------------------------------------------------
 export async function getGalleryItems(): Promise<GalleryItem[]> {
-  const tursoData = await fetchFromTurso<GalleryItem[]>('gallery');
-  if (tursoData && tursoData.length > 0) {
-    return tursoData;
-  }
-
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
@@ -763,7 +712,7 @@ export async function getGalleryItems(): Promise<GalleryItem[]> {
         return data as GalleryItem[];
       }
     } catch (e) {
-      console.warn('Supabase getGalleryItems fallback', e);
+      console.warn('[Supabase] getGalleryItems error:', e);
     }
   }
   return initialGallery;
@@ -780,16 +729,23 @@ export async function saveGalleryItem(item: GalleryItem): Promise<GalleryItem[]>
     updated = [...current, item];
   }
 
-  const cloudRes = await saveToTurso('gallery', item);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('gallery_items').upsert(item);
-    } catch (e) {
-      console.warn('Supabase saveGalleryItem fallback error', e);
+      const { error } = await supabase.from('gallery_items').upsert(item);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -797,16 +753,23 @@ export async function deleteGalleryItem(id: string): Promise<GalleryItem[]> {
   const current = await getGalleryItems();
   const updated = current.filter(g => g.id !== id);
 
-  const cloudRes = await deleteFromTurso('gallery', id);
+  let cloudSuccess = false;
+  let cloudError = '';
 
   if (isSupabaseConfigured() && supabase) {
     try {
-      await supabase.from('gallery_items').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Supabase deleteGalleryItem fallback error', e);
+      const { error } = await supabase.from('gallery_items').delete().eq('id', id);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
     }
   }
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
@@ -814,9 +777,19 @@ export async function deleteGalleryItem(id: string): Promise<GalleryItem[]> {
 // SPECIAL OFFER & PROMO POPUP
 // -----------------------------------------------------------------------------
 export async function getSpecialOffer(): Promise<SpecialOffer> {
-  const tursoData = await fetchFromTurso<SpecialOffer>('offer');
-  if (tursoData) {
-    return tursoData;
+  if (isSupabaseConfigured() && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('special_offers')
+        .select('*')
+        .eq('id', 'active-offer')
+        .single();
+      if (!error && data) {
+        return data as SpecialOffer;
+      }
+    } catch (e) {
+      console.warn('[Supabase] getSpecialOffer error:', e);
+    }
   }
   return initialSpecialOffer;
 }
@@ -826,8 +799,24 @@ export async function saveSpecialOffer(offer: SpecialOffer): Promise<SpecialOffe
     ...offer,
     updated_at: new Date().toISOString(),
   };
-  const cloudRes = await saveToTurso('offer', updated);
-  Object.assign(updated, { cloudSynced: cloudRes.success, error: cloudRes.error });
+
+  let cloudSuccess = false;
+  let cloudError = '';
+
+  if (isSupabaseConfigured() && supabase) {
+    try {
+      const { error } = await supabase.from('special_offers').upsert(updated);
+      if (!error) {
+        cloudSuccess = true;
+      } else {
+        cloudError = error.message;
+      }
+    } catch (e: any) {
+      cloudError = e?.message || 'Network error';
+    }
+  }
+
+  Object.assign(updated, { cloudSynced: cloudSuccess, error: cloudError });
   return updated;
 }
 
