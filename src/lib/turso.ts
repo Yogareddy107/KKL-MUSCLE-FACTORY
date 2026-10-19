@@ -27,6 +27,10 @@ export const tursoClient = isTursoConfigured()
     })
   : null;
 
+export interface TursoActionResult {
+  success: boolean;
+  error?: string;
+}
 
 // ============================================================================
 // GYM SETTINGS
@@ -58,8 +62,8 @@ export async function getTursoGymSettings(): Promise<GymSettings | null> {
   }
 }
 
-export async function saveTursoGymSettings(settings: Partial<GymSettings>): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoGymSettings(settings: Partial<GymSettings>): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT INTO gym_settings (
@@ -96,10 +100,10 @@ export async function saveTursoGymSettings(settings: Partial<GymSettings>): Prom
         new Date().toISOString()
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoGymSettings error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save settings' };
   }
 }
 
@@ -128,8 +132,8 @@ export async function getTursoPlans(): Promise<MembershipPlan[] | null> {
   }
 }
 
-export async function saveTursoPlan(plan: MembershipPlan): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoPlan(plan: MembershipPlan): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO membership_plans (id, name, duration_months, price, description, benefits, is_popular, is_published, display_order)
@@ -140,21 +144,21 @@ export async function saveTursoPlan(plan: MembershipPlan): Promise<boolean> {
         plan.is_popular ? 1 : 0, plan.is_published ? 1 : 0, plan.display_order || 1
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoPlan error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save plan' };
   }
 }
 
-export async function deleteTursoPlan(id: string): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function deleteTursoPlan(id: string): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({ sql: "DELETE FROM membership_plans WHERE id = ?", args: [id] });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] deleteTursoPlan error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to delete plan' };
   }
 }
 
@@ -183,8 +187,8 @@ export async function getTursoTrainers(): Promise<Trainer[] | null> {
   }
 }
 
-export async function saveTursoTrainer(trainer: Trainer): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoTrainer(trainer: Trainer): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     const certs = Array.isArray(trainer.certifications)
       ? JSON.stringify(trainer.certifications)
@@ -204,21 +208,21 @@ export async function saveTursoTrainer(trainer: Trainer): Promise<boolean> {
         trainer.display_order || 1
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoTrainer error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save trainer' };
   }
 }
 
-export async function deleteTursoTrainer(id: string): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function deleteTursoTrainer(id: string): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({ sql: "DELETE FROM trainers WHERE id = ?", args: [id] });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] deleteTursoTrainer error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to delete trainer' };
   }
 }
 
@@ -251,16 +255,56 @@ export async function getTursoMembers(): Promise<Member[] | null> {
   }
 }
 
-export async function saveTursoMember(member: Member): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoMember(member: Member): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso database client not connected' };
   try {
+    const cleanCode = (member.member_code || '').trim().toUpperCase();
+    if (!cleanCode) {
+      return { success: false, error: 'Member Code is required (e.g. KKL-1001).' };
+    }
+    const cleanName = (member.full_name || '').trim();
+    if (!cleanName) {
+      return { success: false, error: 'Member full name is required.' };
+    }
+    const cleanPhone = (member.phone || '').trim();
+    if (!cleanPhone) {
+      return { success: false, error: 'Member phone number is required.' };
+    }
+
+    // Check if this member_code already exists in database
+    let targetId = member.id;
+    try {
+      const existing = await tursoClient.execute({
+        sql: 'SELECT id FROM members WHERE member_code = ? LIMIT 1',
+        args: [cleanCode]
+      });
+      if (existing.rows && existing.rows.length > 0) {
+        const matchId = String(existing.rows[0].id);
+        // Reuse matching record's ID to prevent SQLite UNIQUE constraint failure
+        targetId = matchId;
+      }
+    } catch {}
+
     await tursoClient.execute({
-      sql: `INSERT OR REPLACE INTO members (
+      sql: `INSERT INTO members (
         id, member_code, full_name, phone, email, gender, date_of_birth, 
         emergency_contact, medical_notes, status, join_date, current_plan_name, expiry_date, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        member_code = excluded.member_code,
+        full_name = excluded.full_name,
+        phone = excluded.phone,
+        email = excluded.email,
+        gender = excluded.gender,
+        date_of_birth = excluded.date_of_birth,
+        emergency_contact = excluded.emergency_contact,
+        medical_notes = excluded.medical_notes,
+        status = excluded.status,
+        join_date = excluded.join_date,
+        current_plan_name = excluded.current_plan_name,
+        expiry_date = excluded.expiry_date`,
       args: [
-        member.id, member.member_code, member.full_name, member.phone,
+        targetId, cleanCode, cleanName, cleanPhone,
         member.email || null, member.gender || 'Male', member.date_of_birth || null,
         member.emergency_contact || null, member.medical_notes || null,
         member.status || 'active', member.join_date || new Date().toISOString().split('T')[0],
@@ -268,21 +312,21 @@ export async function saveTursoMember(member: Member): Promise<boolean> {
         new Date().toISOString()
       ]
     });
-    return true;
-  } catch (err) {
-    console.warn('[Turso] saveTursoMember error:', err);
-    return false;
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Turso] saveTursoMember error:', err);
+    return { success: false, error: err?.message || 'Database error saving member' };
   }
 }
 
-export async function deleteTursoMember(id: string): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function deleteTursoMember(id: string): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({ sql: "DELETE FROM members WHERE id = ?", args: [id] });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] deleteTursoMember error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to delete member' };
   }
 }
 
@@ -309,8 +353,8 @@ export async function getTursoWorkouts(): Promise<WorkoutPlan[] | null> {
   }
 }
 
-export async function saveTursoWorkout(workout: WorkoutPlan): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoWorkout(workout: WorkoutPlan): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO workout_plans (id, title, description, difficulty, days_per_week, is_published, exercises)
@@ -320,21 +364,21 @@ export async function saveTursoWorkout(workout: WorkoutPlan): Promise<boolean> {
         workout.days_per_week, workout.is_published ? 1 : 0, JSON.stringify(workout.exercises || [])
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoWorkout error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save workout' };
   }
 }
 
-export async function deleteTursoWorkout(id: string): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function deleteTursoWorkout(id: string): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({ sql: "DELETE FROM workout_plans WHERE id = ?", args: [id] });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] deleteTursoWorkout error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to delete workout' };
   }
 }
 
@@ -367,8 +411,8 @@ export async function getTursoDiets(): Promise<DietPlan[] | null> {
   }
 }
 
-export async function saveTursoDiet(diet: DietPlan): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoDiet(diet: DietPlan): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO diet_plans (id, title, goal, calories_target, protein_grams, carbs_grams, fats_grams, document_url, photo_url, description, meals)
@@ -381,21 +425,21 @@ export async function saveTursoDiet(diet: DietPlan): Promise<boolean> {
         diet.description || '', JSON.stringify(diet.meals || [])
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoDiet error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save diet' };
   }
 }
 
-export async function deleteTursoDiet(id: string): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function deleteTursoDiet(id: string): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({ sql: "DELETE FROM diet_plans WHERE id = ?", args: [id] });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] deleteTursoDiet error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to delete diet' };
   }
 }
 
@@ -424,8 +468,8 @@ export async function getTursoGallery(): Promise<GalleryItem[] | null> {
   }
 }
 
-export async function saveTursoGallery(item: GalleryItem): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoGallery(item: GalleryItem): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     const url = item.image_url || (item as any).url || '';
     const mediaType = (item as any).media_type || 'photo';
@@ -434,21 +478,21 @@ export async function saveTursoGallery(item: GalleryItem): Promise<boolean> {
             VALUES (?, ?, ?, ?, ?, ?)`,
       args: [item.id, item.title, item.category, mediaType, url, (item as any).created_at || new Date().toISOString()]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoGallery error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save gallery item' };
   }
 }
 
-export async function deleteTursoGallery(id: string): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function deleteTursoGallery(id: string): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({ sql: "DELETE FROM gallery_items WHERE id = ?", args: [id] });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] deleteTursoGallery error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to delete gallery item' };
   }
 }
 
@@ -477,8 +521,8 @@ export async function getTursoEnquiries(): Promise<Enquiry[] | null> {
   }
 }
 
-export async function saveTursoEnquiry(enquiry: Enquiry): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoEnquiry(enquiry: Enquiry): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO enquiries (id, full_name, phone, email, interested_plan, message, status, created_at)
@@ -490,10 +534,10 @@ export async function saveTursoEnquiry(enquiry: Enquiry): Promise<boolean> {
         enquiry.created_at || new Date().toISOString()
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoEnquiry error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save enquiry' };
   }
 }
 
@@ -523,8 +567,8 @@ export async function getTursoSpecialOffer(): Promise<SpecialOffer | null> {
   }
 }
 
-export async function saveTursoSpecialOffer(offer: SpecialOffer): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoSpecialOffer(offer: SpecialOffer): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO special_offers (id, title, badge, description, image_url, cta_text, cta_link, is_active, updated_at)
@@ -541,10 +585,10 @@ export async function saveTursoSpecialOffer(offer: SpecialOffer): Promise<boolea
         new Date().toISOString()
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoSpecialOffer error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save special offer' };
   }
 }
 
@@ -584,8 +628,8 @@ export async function getTursoAttendance(): Promise<AttendanceRecord[] | null> {
   }
 }
 
-export async function saveTursoAttendance(record: AttendanceRecord): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoAttendance(record: AttendanceRecord): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO attendance_records (id, member_id, check_in_date, check_in_time, session_type, created_at)
@@ -599,10 +643,10 @@ export async function saveTursoAttendance(record: AttendanceRecord): Promise<boo
         record.created_at || new Date().toISOString()
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoAttendance error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to record attendance' };
   }
 }
 
@@ -627,8 +671,8 @@ export async function getTursoWorkoutAssignments(): Promise<WorkoutAssignment[] 
   }
 }
 
-export async function saveTursoWorkoutAssignment(assignment: WorkoutAssignment): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoWorkoutAssignment(assignment: WorkoutAssignment): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO workout_assignments (id, member_id, plan_id, assigned_date, notes, created_at)
@@ -642,10 +686,10 @@ export async function saveTursoWorkoutAssignment(assignment: WorkoutAssignment):
         new Date().toISOString()
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoWorkoutAssignment error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save workout assignment' };
   }
 }
 
@@ -670,8 +714,8 @@ export async function getTursoDietAssignments(): Promise<DietAssignment[] | null
   }
 }
 
-export async function saveTursoDietAssignment(assignment: DietAssignment): Promise<boolean> {
-  if (!tursoClient) return false;
+export async function saveTursoDietAssignment(assignment: DietAssignment): Promise<TursoActionResult> {
+  if (!tursoClient) return { success: false, error: 'Turso client not connected' };
   try {
     await tursoClient.execute({
       sql: `INSERT OR REPLACE INTO diet_assignments (id, member_id, plan_id, assigned_date, special_notes, created_at)
@@ -685,11 +729,9 @@ export async function saveTursoDietAssignment(assignment: DietAssignment): Promi
         new Date().toISOString()
       ]
     });
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[Turso] saveTursoDietAssignment error:', err);
-    return false;
+    return { success: false, error: err?.message || 'Failed to save diet assignment' };
   }
 }
-
-

@@ -100,60 +100,63 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { entity, data } = body;
 
-    let success = false;
+    let result: { success: boolean; error?: string } = { success: false, error: 'Unknown entity' };
     switch (entity) {
       case 'settings':
-        success = await saveTursoGymSettings(data);
+        result = await saveTursoGymSettings(data);
         break;
       case 'plans':
-        success = await saveTursoPlan(data);
+        result = await saveTursoPlan(data);
         break;
       case 'trainers':
-        success = await saveTursoTrainer(data);
+        result = await saveTursoTrainer(data);
         break;
       case 'members':
-        success = await saveTursoMember(data);
+        result = await saveTursoMember(data);
         break;
       case 'workouts':
-        success = await saveTursoWorkout(data);
+        result = await saveTursoWorkout(data);
         break;
       case 'diets':
-        success = await saveTursoDiet(data);
+        result = await saveTursoDiet(data);
         break;
       case 'gallery':
-        success = await saveTursoGallery(data);
+        result = await saveTursoGallery(data);
         break;
       case 'enquiries':
-        success = await saveTursoEnquiry(data);
+        result = await saveTursoEnquiry(data);
         break;
       case 'offer':
-        success = await saveTursoSpecialOffer(data);
+        result = await saveTursoSpecialOffer(data);
         break;
       case 'attendance':
-        success = await saveTursoAttendance(data);
+        result = await saveTursoAttendance(data);
         break;
       case 'workout_assignments':
-        success = await saveTursoWorkoutAssignment(data);
+        result = await saveTursoWorkoutAssignment(data);
         break;
       case 'diet_assignments':
-        success = await saveTursoDietAssignment(data);
+        result = await saveTursoDietAssignment(data);
         break;
       default:
         return NextResponse.json({ success: false, message: 'Unknown entity' }, { status: 400, headers: noCacheHeaders });
     }
 
-    if (!success) {
-      console.warn(`[API /api/turso POST] Failed to persist entity: ${entity}`);
-      return NextResponse.json({ success: false, message: `Failed to persist ${entity} to cloud database` }, { status: 500, headers: noCacheHeaders });
+    if (!result.success) {
+      console.warn(`[API /api/turso POST] Failed to persist entity ${entity}:`, result.error);
+      return NextResponse.json({ 
+        success: false, 
+        message: result.error || `Failed to persist ${entity} to cloud database`,
+        error: result.error 
+      }, { status: 500, headers: noCacheHeaders });
     }
 
     return NextResponse.json({ success: true, message: `Successfully saved ${entity} to cloud database` }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error('[API /api/turso POST] Exception saving:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Server error' }, { status: 500, headers: noCacheHeaders });
+    return NextResponse.json({ success: false, error: error.message || 'Server error', message: error.message || 'Server error' }, { status: 500, headers: noCacheHeaders });
   }
 }
-
 
 export async function DELETE(req: NextRequest) {
   if (!isTursoConfigured()) {
@@ -169,33 +172,37 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'entity and id are required' }, { status: 400 });
     }
 
-    let success = false;
+    let result: { success: boolean; error?: string } = { success: false, error: 'Unsupported delete entity' };
     switch (entity) {
       case 'plans':
-        success = await deleteTursoPlan(id);
+        result = await deleteTursoPlan(id);
         break;
       case 'trainers':
-        success = await deleteTursoTrainer(id);
+        result = await deleteTursoTrainer(id);
         break;
       case 'members':
-        success = await deleteTursoMember(id);
+        result = await deleteTursoMember(id);
         break;
       case 'workouts':
-        success = await deleteTursoWorkout(id);
+        result = await deleteTursoWorkout(id);
         break;
       case 'diets':
-        success = await deleteTursoDiet(id);
+        result = await deleteTursoDiet(id);
         break;
       case 'gallery':
-        success = await deleteTursoGallery(id);
+        result = await deleteTursoGallery(id);
         break;
       default:
         return NextResponse.json({ success: false, message: 'Unsupported delete entity' }, { status: 400 });
     }
 
-    return NextResponse.json({ success });
+    if (!result.success) {
+      return NextResponse.json({ success: false, message: result.error || 'Delete failed', error: result.error }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('[API /api/turso DELETE] Error deleting:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message, message: error.message }, { status: 500 });
   }
 }

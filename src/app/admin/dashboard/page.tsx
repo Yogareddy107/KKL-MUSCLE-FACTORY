@@ -313,7 +313,7 @@ export default function AdminDashboardPage() {
     if ((updated as any).cloudSynced) {
       notify(`✅ Member ${memberToSave.full_name} (${memberToSave.member_code}) saved & live synced across all devices!`, 'success');
     } else {
-      notify(`⚠️ Member saved locally, but cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
     }
   };
 
@@ -354,7 +354,7 @@ export default function AdminDashboardPage() {
     if ((updated as any).cloudSynced) {
       notify('✅ Membership plan saved & live synced across all devices!', 'success');
     } else {
-      notify(`⚠️ Plan saved locally, but cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
     }
   };
 
@@ -396,7 +396,7 @@ export default function AdminDashboardPage() {
     if ((updated as any).cloudSynced) {
       notify('✅ Trainer profile saved & live synced across all devices!', 'success');
     } else {
-      notify(`⚠️ Trainer saved locally, but cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
     }
   };
 
@@ -442,7 +442,7 @@ export default function AdminDashboardPage() {
     if ((updated as any).cloudSynced) {
       notify('✅ Workout routine saved & live synced across all devices!', 'success');
     } else {
-      notify(`⚠️ Routine saved locally, but cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
     }
   };
 
@@ -495,7 +495,7 @@ export default function AdminDashboardPage() {
     if ((updated as any).cloudSynced) {
       notify('✅ Diet plan saved & live synced across all devices!', 'success');
     } else {
-      notify(`⚠️ Diet saved locally, but cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
     }
   };
 
@@ -530,7 +530,7 @@ export default function AdminDashboardPage() {
     if ((updated as any).cloudSynced) {
       notify('✅ Media saved & live synced across all devices!', 'success');
     } else {
-      notify(`⚠️ Media saved locally, but cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
     }
   };
 
@@ -585,7 +585,7 @@ export default function AdminDashboardPage() {
     if ((updated as any).cloudSynced) {
       notify('✅ Gym settings saved & live synced across all devices!', 'success');
     } else {
-      notify(`⚠️ Settings saved locally, but cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
     }
   };
 
@@ -619,7 +619,7 @@ export default function AdminDashboardPage() {
     if ((updated as any).cloudSynced) {
       notify('✅ Special Offer popup saved & live synced across all devices!', 'success');
     } else {
-      notify(`⚠️ Offer saved locally, but cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
     }
   };
 
@@ -1884,7 +1884,7 @@ export default function AdminDashboardPage() {
                     if ((updated as any).cloudSynced) {
                       notify(nextStatus ? '✅ Offer popup activated & live across all devices!' : '✅ Offer popup paused across all devices.');
                     } else {
-                      notify(`⚠️ Status changed locally, cloud sync warning: ${(updated as any).error || 'offline'}.`, 'error');
+                      notify(`⚠️ Cloud sync error: ${(updated as any).error || 'offline'}.`, 'error');
                     }
                   }}
                   className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 border shrink-0 ${
